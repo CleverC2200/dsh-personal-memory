@@ -27,6 +27,7 @@ function fixture(overrides = {}, config = { enabled: true }) {
     identitySignal: () => identity.signal,
     watch: () => () => {},
     bindSession: async () => {},
+    assertSession: async () => {},
     state: async () => ({ scope, generationEnabled: true, revision: 1, bankGeneration: 0 }),
     recall: async (query) => {
       queries.push(query);
@@ -226,4 +227,22 @@ test("a cancelled or discarded input without a committed user message never gene
   f.end(false);
   await f.flush();
   assert.deepEqual(f.captures, []);
+});
+
+test("empty recall with generation OFF does not bind an unused session", async () => {
+  let bindings = 0;
+  const f = fixture({
+    bindSession: async () => {
+      bindings++;
+    },
+    state: async () => ({
+      scope,
+      generationEnabled: false,
+      revision: 0,
+      bankGeneration: 0,
+    }),
+    recall: async () => ({ scope, memories: [] }),
+  });
+  await f.run();
+  assert.equal(bindings, 0);
 });

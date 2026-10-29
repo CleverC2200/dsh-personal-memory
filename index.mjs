@@ -16,6 +16,11 @@ export function apply(ctx) {
     "agent/pre-step",
     async ({ agent, messages, turn, signal }, next) => {
       const identity = ctx.geaMemory.identitySignal();
+      const requestSignal = AbortSignal.any([signal, identity]);
+      await untilAborted(
+        () => ctx.geaMemory.assertSession(agent.session.id, requestSignal),
+        requestSignal,
+      );
       const decision = await next();
       const active = () =>
         !signal.aborted &&
@@ -28,15 +33,15 @@ export function apply(ctx) {
       const query = promptText(messages);
       if (!query) return decision;
       try {
-        const requestSignal = AbortSignal.any([signal, identity]);
         const sessionId = agent.session.id;
-        await untilAborted(
-          () => ctx.geaMemory.bindSession(sessionId, requestSignal),
-          requestSignal,
-        );
         const state = await untilAborted(() => ctx.geaMemory.state(requestSignal), requestSignal);
         if (!active()) return decision;
         if (state.generationEnabled && typeof sessionId === "string") {
+          await untilAborted(
+            () => ctx.geaMemory.bindSession(sessionId, requestSignal),
+            requestSignal,
+          );
+          if (!active()) return decision;
           const key = sessionId + ":" + turn;
           const accepted = admissions.get(key) ?? new Map();
           for (const { message, text } of originals) {
@@ -46,7 +51,11 @@ export function apply(ctx) {
                 committed: false,
                 state,
                 text,
-                source: { sessionId, messageId: message.id, time: new Date().toISOString() },
+                source: {
+                  sessionId,
+                  messageId: message.id,
+                  time: new Date().toISOString(),
+                },
               });
           }
           admissions.set(key, accepted);
@@ -61,6 +70,12 @@ export function apply(ctx) {
           .map((memory) => `[${memory.id}] ${memory.title}\n${memory.content}`)
           .join("\n\n");
         if (!body) return decision;
+        if (!state.generationEnabled)
+          await untilAborted(
+            () => ctx.geaMemory.bindSession(sessionId, requestSignal),
+            requestSignal,
+          );
+        if (!active()) return decision;
         return {
           ...decision,
           messages: [
