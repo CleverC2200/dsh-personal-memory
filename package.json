@@ -46,6 +46,7 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-workspace",
         "@cleverc2200/gea-dsh-prototype"
       ],
       "external": [

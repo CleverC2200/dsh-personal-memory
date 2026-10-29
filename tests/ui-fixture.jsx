@@ -18,6 +18,11 @@ const emptySource = { getSnapshot: () => emptyBinding, subscribe: () => () => {}
 slots.installScope("session", { current: emptySource, bindingSource: () => emptySource });
 const shell = createSettingsShellStore().create();
 const snapshot = { scope: "synthetic-alice", state: "confirmed" };
+ctx.provide("uiWorkspace", {
+  openSession(sessionId) {
+    document.getElementById("fixture-navigation").textContent = "已打开来源会话：" + sessionId;
+  },
+});
 ctx.provide("geaIdentity", { getSnapshot: () => snapshot, subscribe: () => () => {} });
 function Fixture({ renderSlot }) {
   const props = {
@@ -41,19 +46,19 @@ function Fixture({ renderSlot }) {
     useOnboardingSteps: (select) => select([]),
     useSections: (select) =>
       select(
-        ctx.slots
-          .entries("settings.section")
-          .map((entry) => ({
-            id: entry.options.id,
-            order: entry.options.order,
-            label: entry.options.label(),
-          })),
+        ctx.slots.entries("settings.section").map((entry) => ({
+          id: entry.options.id,
+          order: entry.options.order,
+          label: entry.options.label(),
+        })),
       ),
     renderSlot,
   };
   return (
     <>
-      <p style={{ padding: 24 }}>个人记忆公开设置入口 · 合成 HTTP 验收</p>
+      <p id="fixture-navigation" style={{ padding: 24 }}>
+        个人记忆公开设置入口 · 合成 HTTP 验收
+      </p>
       <SettingsRoot {...props} />
     </>
   );

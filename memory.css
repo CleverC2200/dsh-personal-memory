@@ -225,3 +225,73 @@
 .gea-memory-toggle {
   --dsw-alias-brand-primary: var(--memory-accent);
 }
+
+.gea-memory-editor {
+  width: min(520px, calc(100vw - 32px));
+  color: var(--dsw-alias-label-primary, #25272d);
+}
+.gea-memory-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gea-memory-edit-form label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.gea-memory-edit-form select,
+.gea-memory-edit-form textarea {
+  width: 100%;
+  border: 1px solid var(--dsw-alias-border-l4, #e2e3e7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--dsw-alias-bg-layer-1, #fff);
+  caret-color: var(--workbench-brand, #df1732);
+}
+.gea-memory-edit-form textarea {
+  resize: vertical;
+  min-height: 128px;
+  max-height: 35vh;
+}
+.gea-memory-edit-form select:focus-visible,
+.gea-memory-edit-form textarea:focus-visible {
+  outline: 2px solid var(--workbench-brand, #df1732);
+  outline-offset: 2px;
+}
+.gea-memory-edit-form :disabled {
+  opacity: 0.65;
+}
+.gea-memory-edit-error {
+  color: var(--dsw-alias-text-danger, #a51a2d);
+  font-size: 13px;
+}
+.gea-memory-edit-error p {
+  margin: 0 0 8px;
+}
+
+.gea-memory-edit-count {
+  text-align: right;
+  color: var(--dsw-alias-label-secondary, #62656e);
+  font-size: 12px;
+  margin-top: -8px;
+}
+.gea-memory-edit-hint {
+  color: var(--dsw-alias-label-secondary, #62656e);
+  font-size: 12px;
+  margin: 0;
+}
+
+.gea-memory-editor {
+  max-height: 100%;
+  --dsw-alias-button-primary-fill: var(--workbench-brand, #df1732);
+  --dsw-alias-button-primary-hover: #c4142c;
+}
+.gea-memory-editor * {
+  box-sizing: border-box;
+}
+.gea-memory-edit-content {
+  min-height: 0;
+  overflow-y: auto;
+}
