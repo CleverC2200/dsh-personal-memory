@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 const require = createRequire(import.meta.url);
 const {
   chromium,
@@ -63,6 +64,33 @@ test("real Core settings confirms one delete then clears every category with typ
     assert.equal(await confirm.isDisabled(), true);
     await clear.getByLabel("输入“清空”以确认").fill("清空");
     await page.setViewportSize({ width: 1280, height: 720 });
+    const geometry = await page
+      .getByRole("dialog", { name: "设置", exact: true })
+      .boundingBox();
+    const documentWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth,
+    );
+    assert.equal(geometry.width, 800);
+    assert.equal(geometry.height, 672);
+    assert.equal(documentWidth, 1280);
+    for (let index = 0; index < 6; index++) await page.keyboard.press("Tab");
+    assert.equal(
+      await clear.evaluate((el) => el.contains(document.activeElement)),
+      true,
+    );
+    await writeFile(
+      join(output, "geometry.json"),
+      JSON.stringify(
+        {
+          viewport: { width: 1280, height: 720 },
+          shell: geometry,
+          documentWidth,
+          modalFocusContained: true,
+        },
+        null,
+        2,
+      ),
+    );
     await page.screenshot({
       animations: "disabled",
       path: join(output, "clear-confirm-1280.png"),

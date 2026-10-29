@@ -14,20 +14,44 @@ const ctx = new Context();
 const slots = new SlotRegistry(ctx);
 slots.install(createSlotRenderer());
 const emptyBinding = { key: undefined, hooks: {}, keyedHooks: {}, props: {} };
-const emptySource = { getSnapshot: () => emptyBinding, subscribe: () => () => {} };
-slots.installScope("session", { current: emptySource, bindingSource: () => emptySource });
+const emptySource = {
+  getSnapshot: () => emptyBinding,
+  subscribe: () => () => {},
+};
+slots.installScope("session", {
+  current: emptySource,
+  bindingSource: () => emptySource,
+});
 const shell = createSettingsShellStore().create();
-const snapshot = { scope: "synthetic-alice", state: "confirmed" };
+let snapshot = { scope: "synthetic-alice", state: "confirmed" };
+const identityListeners = new Set();
+window.addEventListener("memory-fixture-identity", (event) => {
+  snapshot = { scope: event.detail, state: "confirmed" };
+  for (const listener of identityListeners) listener();
+});
 ctx.provide("uiWorkspace", {
   openSession(sessionId) {
-    document.getElementById("fixture-navigation").textContent = "已打开来源会话：" + sessionId;
+    document.getElementById("fixture-navigation").textContent =
+      "已打开来源会话：" + sessionId;
   },
 });
-ctx.provide("geaIdentity", { getSnapshot: () => snapshot, subscribe: () => () => {} });
+ctx.provide("geaIdentity", {
+  getSnapshot: () => snapshot,
+  subscribe(listener) {
+    identityListeners.add(listener);
+    return () => identityListeners.delete(listener);
+  },
+});
 function Fixture({ renderSlot }) {
   const props = {
     useStore: (select) =>
-      select(useSyncExternalStore(shell.subscribe, shell.getSnapshot, shell.getSnapshot)),
+      select(
+        useSyncExternalStore(
+          shell.subscribe,
+          shell.getSnapshot,
+          shell.getSnapshot,
+        ),
+      ),
     actions: shell.actions,
     useShortcuts: (select) => select([]),
     useSessions: (select) =>
@@ -67,10 +91,20 @@ slots.register(
   {
     name: "root",
     children: Object.fromEntries(
-      ["section", "header", "trigger", "close", "action", "launcher", "onboarding"].map((key) => [
+      [
+        "section",
+        "header",
+        "trigger",
+        "close",
+        "action",
+        "launcher",
+        "onboarding",
+      ].map((key) => [
         "settings." + key,
         {
-          kind: ["section", "action", "onboarding"].includes(key) ? "list" : "single",
+          kind: ["section", "action", "onboarding"].includes(key)
+            ? "list"
+            : "single",
           scope: "root",
         },
       ]),
@@ -82,7 +116,12 @@ slots.register({ name: "settings.header" }, () => "设置");
 slots.register({ name: "settings.trigger" }, () => "设置");
 slots.register({ name: "settings.close" }, () => "关闭设置");
 slots.register(
-  { name: "settings.section", id: "general", order: 0, label: () => "通用设置" },
+  {
+    name: "settings.section",
+    id: "general",
+    order: 0,
+    label: () => "通用设置",
+  },
   () => <p>通用设置</p>,
 );
 slots.register(
@@ -96,4 +135,6 @@ slots.register(
 );
 apply(ctx);
 shell.actions.openSection(sectionId);
-createRoot(document.getElementById("root")).render(slots.renderSlot("root", {}));
+createRoot(document.getElementById("root")).render(
+  slots.renderSlot("root", {}),
+);

@@ -56,7 +56,10 @@ const service = createGeaMemoryService(
           meta: { id: sessionId },
           events: Array.from({ length: 4 }, (_, index) => ({
             type: "user/message",
-            data: { id: "synthetic-message-" + index },
+            data: {
+              id: "synthetic-message-" + index,
+              source: { kind: "user" },
+            },
           })),
         };
       },
