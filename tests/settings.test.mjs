@@ -40,7 +40,9 @@ test("settings loads the current account through HTTP, saves once, and clears on
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const base = "http://127.0.0.1:" + server.address().port;
-  const controller = createMemorySettings({ fetch: (path, init) => fetch(base + path, init) });
+  const controller = createMemorySettings({
+    fetch: (path, init) => fetch(base + path, init),
+  });
   await controller.load();
   assert.equal(controller.getSnapshot().state.generationEnabled, false);
   const saving = controller.toggle(true);
@@ -73,15 +75,19 @@ test("unknown settings result is reconciled with the same operation id without a
       req.socket.destroy();
       return;
     }
-    const value = req.url.endsWith("/operations") ? saved : { scope, state, items: [] };
-    if (req.url.endsWith("/operations")) assert.equal(body.operationId, saved.operationId);
+    const value = req.url.endsWith("/operations")
+      ? saved
+      : { scope, state, items: [] };
+    if (req.url.endsWith("/operations"))
+      assert.equal(body.operationId, saved.operationId);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, value }));
   }).listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const controller = createMemorySettings({
-    fetch: (path, init) => fetch("http://127.0.0.1:" + server.address().port + path, init),
+    fetch: (path, init) =>
+      fetch("http://127.0.0.1:" + server.address().port + path, init),
   });
   await controller.load();
   await controller.toggle(true);
@@ -111,14 +117,20 @@ test("editing keeps drafts on conflict and reconciles unknown writes once throug
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
     let value;
-    if (req.url.endsWith("/list")) value = { scope, state: { ...state, count: 1 }, items: [item] };
+    if (req.url.endsWith("/list"))
+      value = { scope, state: { ...state, count: 1 }, items: [item] };
     if (req.url.endsWith("/get")) value = { scope, item };
     if (req.url.endsWith("/state")) value = state;
     if (req.url.endsWith("/update")) {
       writes++;
       if (mode === "conflict") {
         res.writeHead(409, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: { code: "MEMORY_VERSION_CONFLICT" } }));
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: { code: "MEMORY_VERSION_CONFLICT" },
+          }),
+        );
         return;
       }
       item = {
@@ -147,7 +159,8 @@ test("editing keeps drafts on conflict and reconciles unknown writes once throug
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const controller = createMemorySettings({
-    fetch: (path, init) => fetch("http://127.0.0.1:" + server.address().port + path, init),
+    fetch: (path, init) =>
+      fetch("http://127.0.0.1:" + server.address().port + path, init),
   });
   await controller.load();
   controller.edit(item);
@@ -195,9 +208,15 @@ test("source navigation only follows Host-authorized current memory and identity
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const controller = createMemorySettings({
-    fetch: (path, init) => fetch("http://127.0.0.1:" + server.address().port + path, init),
+    fetch: (path, init) =>
+      fetch("http://127.0.0.1:" + server.address().port + path, init),
   });
-  const item = { id: "memory-1", category: "preference", content: "draft", version: 1 };
+  const item = {
+    id: "memory-1",
+    category: "preference",
+    content: "draft",
+    version: 1,
+  };
   const open = (target) => {
     navigated = target;
   };
@@ -221,7 +240,12 @@ test("source navigation only follows Host-authorized current memory and identity
 test("unknown edit retry reuses the original operation and processing edits cannot be repeated", async (t) => {
   const ids = [];
   let processing = true;
-  const item = { id: "memory-1", category: "habit", content: "原内容", version: 1 };
+  const item = {
+    id: "memory-1",
+    category: "habit",
+    content: "原内容",
+    version: 1,
+  };
   const server = createServer(async (req, res) => {
     let raw = "";
     for await (const chunk of req) raw += chunk;
@@ -249,7 +273,8 @@ test("unknown edit retry reuses the original operation and processing edits cann
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const controller = createMemorySettings({
-    fetch: (path, init) => fetch("http://127.0.0.1:" + server.address().port + path, init),
+    fetch: (path, init) =>
+      fetch("http://127.0.0.1:" + server.address().port + path, init),
   });
   await controller.load();
   controller.edit(item);
@@ -264,4 +289,106 @@ test("unknown edit retry reuses the original operation and processing edits cann
   assert.equal(ids.length, 2);
   assert.equal(ids[0], ids[1]);
   assert.equal(controller.getSnapshot().editing, null);
+});
+
+test("delete confirmation and typed clear use one durable operation and identity reset drops pending controls", async (t) => {
+  const item = {
+    id: "memory-1",
+    category: "habit",
+    title: "习惯",
+    content: "内容",
+    version: 1,
+  };
+  let writes = 0;
+  let saved;
+  const server = createServer(async (req, res) => {
+    let raw = "";
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    let value = { scope, state: { ...state, count: 1 }, items: [item] };
+    if (req.url.endsWith("/delete") || req.url.endsWith("/clear")) {
+      writes++;
+      saved = {
+        scope,
+        operationId: body.operationId,
+        status: "completed",
+        state,
+      };
+      req.socket.destroy();
+      return;
+    }
+    if (req.url.endsWith("/operations")) {
+      assert.equal(body.operationId, saved.operationId);
+      value = saved;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, value }));
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const controller = createMemorySettings({
+    fetch: (path, init) =>
+      fetch("http://127.0.0.1:" + server.address().port + path, init),
+  });
+  await controller.load();
+  controller.remove(item);
+  assert.equal(writes, 0);
+  await controller.confirmRemoval();
+  assert.equal(writes, 1);
+  assert.match(controller.getSnapshot().removalError, /待确认/);
+  await controller.confirmRemoval();
+  assert.equal(writes, 1);
+  await controller.verifyRemoval();
+  assert.equal(writes, 1);
+  assert.equal(controller.getSnapshot().removal, null);
+  controller.clear();
+  await controller.confirmRemoval();
+  assert.equal(writes, 1);
+  controller.changeConfirmation("清空");
+  await controller.confirmRemoval();
+  assert.equal(writes, 2);
+  controller.reset();
+  assert.equal(controller.getSnapshot().removal, null);
+  assert.equal(controller.getSnapshot().removalPending, null);
+  assert.equal(controller.getSnapshot().identityEpoch, 1);
+});
+
+test("identity replacement discards late ignored-abort lists and clears control drafts in the same epoch", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  const replacement = { ...state, scope: { ...scope, userId: "bob" } };
+  const controller = createMemorySettings({
+    fetch: async () => {
+      calls++;
+      const current = calls;
+      if (current === 1) await gate;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          value: {
+            scope: current === 1 ? scope : replacement.scope,
+            state: current === 1 ? state : replacement,
+            items: [],
+          },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+  const old = controller.load();
+  controller.reset();
+  await controller.load();
+  release();
+  await old;
+  assert.equal(controller.getSnapshot().state.scope.userId, "bob");
+  assert.equal(controller.getSnapshot().identityEpoch, 1);
+  controller.clear();
+  controller.changeConfirmation("清空");
+  controller.reset();
+  assert.equal(controller.getSnapshot().confirmation, "");
+  assert.equal(controller.getSnapshot().removal, null);
+  assert.equal(controller.getSnapshot().identityEpoch, 2);
 });

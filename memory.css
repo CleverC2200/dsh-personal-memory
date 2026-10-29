@@ -295,3 +295,12 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+.gea-memory-delete-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 30vh;
+  overflow-y: auto;
+  color: var(--dsw-alias-label-secondary, #62656e);
+}

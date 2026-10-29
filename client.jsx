@@ -1,5 +1,10 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
-import { Button, Input, Switch, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
+import {
+  Button,
+  Input,
+  Switch,
+  Modal,
+} from "@deepseek-ai/dsh-client-ui-primitives";
 import { createMemorySettings } from "./settings.mjs";
 import styles from "./memory.css";
 
@@ -52,11 +57,9 @@ export function MemorySection({ controller, actions, close }) {
     void controller.load();
   }, [controller]);
   useEffect(() => {
-    if (!view.state) {
-      setQuery("");
-      setCategory("");
-    }
-  }, [view.state]);
+    setQuery("");
+    setCategory("");
+  }, [view.identityEpoch]);
   const items = view.items.filter(
     (item) =>
       (!category || item.category === category) &&
@@ -65,7 +68,11 @@ export function MemorySection({ controller, actions, close }) {
         .includes(query.trim().toLocaleLowerCase()),
   );
   return (
-    <section className="gea-memory" aria-label="记忆与进化" aria-busy={view.loading}>
+    <section
+      className="gea-memory"
+      aria-label="记忆与进化"
+      aria-busy={view.loading}
+    >
       <style>{styles}</style>
       <header className="gea-memory-heading">
         <h1>记忆与进化</h1>
@@ -92,13 +99,21 @@ export function MemorySection({ controller, actions, close }) {
             checked={view.state?.generationEnabled === true}
             onChange={(enabled) => void controller.toggle(enabled)}
             disabled={
-              !view.state || view.saving || !!view.pending || view.editSaving || !!view.editPending
+              !view.state ||
+              view.saving ||
+              !!view.pending ||
+              view.editSaving ||
+              !!view.editPending ||
+              view.removalSaving ||
+              !!view.removalPending
             }
             label="生成对话记忆"
           />
         </div>
         <p>允许 GEA 从后续对话中提取并更新与你有关的记忆。</p>
-        <p className="gea-memory-detail">关闭后不再生成新记忆，已有记忆仍可用于回答。</p>
+        <p className="gea-memory-detail">
+          关闭后不再生成新记忆，已有记忆仍可用于回答。
+        </p>
       </div>
       <div className="gea-memory-list-heading">
         <h2>
@@ -108,7 +123,15 @@ export function MemorySection({ controller, actions, close }) {
           <Button
             size="sm"
             className="gea-memory-danger"
-            disabled={!view.items.length || view.saving}
+            disabled={
+              !view.state ||
+              view.saving ||
+              !!view.pending ||
+              view.editSaving ||
+              !!view.editPending ||
+              view.removalSaving ||
+              !!view.removalPending
+            }
             onClick={() => actions.clear()}
           >
             清空记忆
@@ -123,7 +146,9 @@ export function MemorySection({ controller, actions, close }) {
           <span>{view.error}</span>
           <Button
             size="sm"
-            onClick={() => void (view.pending ? controller.verify() : controller.load())}
+            onClick={() =>
+              void (view.pending ? controller.verify() : controller.load())
+            }
             disabled={view.loading || view.saving}
           >
             {view.pending ? "查询结果" : "重新加载"}
@@ -141,7 +166,12 @@ export function MemorySection({ controller, actions, close }) {
       />
       <div className="gea-memory-categories" role="group" aria-label="记忆分类">
         {categories.map(([id, label]) => (
-          <Button key={id} size="sm" aria-pressed={category === id} onClick={() => setCategory(id)}>
+          <Button
+            key={id}
+            size="sm"
+            aria-pressed={category === id}
+            onClick={() => setCategory(id)}
+          >
             {label}
           </Button>
         ))}
@@ -165,12 +195,15 @@ export function MemorySection({ controller, actions, close }) {
         ) : (
           items.map((item) => (
             <article className="gea-memory-item" key={item.id}>
-              <span className="gea-memory-category">{categoryLabels[item.category]}</span>
+              <span className="gea-memory-category">
+                {categoryLabels[item.category]}
+              </span>
               <div className="gea-memory-item-body">
                 <h3>{item.title}</h3>
                 <p>{item.content}</p>
                 <small>
-                  {timeLabel(item.updatedAt)} · {item.manuallyEdited ? "你已编辑" : "来自对话"}
+                  {timeLabel(item.updatedAt)} ·{" "}
+                  {item.manuallyEdited ? "你已编辑" : "来自对话"}
                 </small>
               </div>
               {actions && (
@@ -189,7 +222,13 @@ export function MemorySection({ controller, actions, close }) {
                     <Button
                       size="sm"
                       onClick={() => actions.edit(item)}
-                      disabled={view.saving || !!view.pending || !!view.editPending}
+                      disabled={
+                        view.saving ||
+                        !!view.pending ||
+                        !!view.editPending ||
+                        view.removalSaving ||
+                        !!view.removalPending
+                      }
                       aria-label={`编辑记忆：${item.title}`}
                     >
                       编辑
@@ -199,6 +238,14 @@ export function MemorySection({ controller, actions, close }) {
                     <Button
                       size="sm"
                       onClick={() => actions.delete(item)}
+                      disabled={
+                        view.saving ||
+                        !!view.pending ||
+                        view.editSaving ||
+                        !!view.editPending ||
+                        view.removalSaving ||
+                        !!view.removalPending
+                      }
                       aria-label={`删除记忆：${item.title}`}
                     >
                       删除
@@ -210,6 +257,85 @@ export function MemorySection({ controller, actions, close }) {
           ))
         )}
       </div>
+      <Modal
+        open={!!view.removal}
+        title={
+          view.removal?.kind === "delete"
+            ? "删除这条记忆？"
+            : view.removal?.kind === "settings"
+              ? "关闭生成结果待确认"
+              : "清空所有记忆？"
+        }
+        closeLabel="关闭清理确认"
+        onClose={() => controller.cancelRemoval()}
+        className="gea-memory-editor"
+        contentClassName="gea-memory-edit-content"
+        description={
+          view.removal?.kind === "delete"
+            ? "删除这条记忆及相关可用派生内容，不会删除原聊天记录。"
+            : view.removal?.kind === "settings"
+              ? "旧自动任务的清理结果尚未确认，已有记忆仍可用于回答。"
+              : "清空当前账号所有分类的记忆，不受搜索和分类筛选影响。生成开关和聊天记录会保留。"
+        }
+        footer={
+          <>
+            <Button
+              onClick={() => controller.cancelRemoval()}
+              disabled={view.removalSaving || !!view.removalPending}
+            >
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              className="gea-memory-confirm-danger"
+              disabled={
+                view.removalSaving ||
+                (!view.removalPending &&
+                  view.removal?.kind === "clear" &&
+                  view.confirmation !== "清空")
+              }
+              onClick={() =>
+                void (view.removalPending
+                  ? controller.verifyRemoval()
+                  : controller.confirmRemoval())
+              }
+            >
+              {view.removalSaving
+                ? "处理中…"
+                : view.removalPending
+                  ? "查询结果"
+                  : view.removal?.kind === "delete"
+                    ? "确认删除"
+                    : "确认清空"}
+            </Button>
+          </>
+        }
+      >
+        {view.removal?.kind === "delete" && (
+          <p className="gea-memory-delete-preview">
+            {view.removal.item?.content}
+          </p>
+        )}
+        {view.removal?.kind === "clear" && (
+          <div className="gea-memory-edit-form">
+            <label htmlFor="gea-memory-clear-word">输入“清空”以确认</label>
+            <Input
+              id="gea-memory-clear-word"
+              data-modal-autofocus
+              value={view.confirmation}
+              disabled={view.removalSaving || !!view.removalPending}
+              onChange={(event) =>
+                controller.changeConfirmation(event.target.value)
+              }
+            />
+          </div>
+        )}
+        {view.removalError && (
+          <p role="alert" className="gea-memory-edit-error">
+            {view.removalError}
+          </p>
+        )}
+      </Modal>
       <Modal
         open={!!view.editing}
         title="编辑记忆"
@@ -229,11 +355,20 @@ export function MemorySection({ controller, actions, close }) {
             <Button
               variant="primary"
               onClick={() =>
-                void (view.editPending ? controller.verifyEdit() : controller.saveEdit())
+                void (view.editPending
+                  ? controller.verifyEdit()
+                  : controller.saveEdit())
               }
-              disabled={view.editSaving || (!view.editPending && !view.editing?.content.trim())}
+              disabled={
+                view.editSaving ||
+                (!view.editPending && !view.editing?.content.trim())
+              }
             >
-              {view.editSaving ? "保存中…" : view.editPending ? "查询结果" : "保存修改"}
+              {view.editSaving
+                ? "保存中…"
+                : view.editPending
+                  ? "查询结果"
+                  : "保存修改"}
             </Button>
           </>
         }
@@ -245,7 +380,9 @@ export function MemorySection({ controller, actions, close }) {
               id="gea-memory-edit-category"
               value={view.editing.category}
               disabled={view.editSaving || !!view.editPending}
-              onChange={(event) => controller.changeEdit({ category: event.target.value })}
+              onChange={(event) =>
+                controller.changeEdit({ category: event.target.value })
+              }
             >
               {categories
                 .filter(([id]) => id)
@@ -263,11 +400,19 @@ export function MemorySection({ controller, actions, close }) {
               maxLength={6000}
               disabled={view.editSaving || !!view.editPending}
               rows={6}
-              onChange={(event) => controller.changeEdit({ content: event.target.value })}
+              onChange={(event) =>
+                controller.changeEdit({ content: event.target.value })
+              }
             />
-            <small className="gea-memory-edit-count">{view.editing.content.length} 字</small>
-            <p className="gea-memory-edit-hint">来源：原对话。修改后将标记为“你已编辑”。</p>
-            {!view.editing.content.trim() && <p role="status">记忆内容不能为空。</p>}
+            <small className="gea-memory-edit-count">
+              {view.editing.content.length} 字
+            </small>
+            <p className="gea-memory-edit-hint">
+              来源：原对话。修改后将标记为“你已编辑”。
+            </p>
+            {!view.editing.content.trim() && (
+              <p role="status">记忆内容不能为空。</p>
+            )}
             {view.editError && (
               <div className="gea-memory-edit-error" role="alert">
                 <p>{view.editError}</p>
@@ -301,8 +446,14 @@ export function apply(ctx) {
   const controller = createMemorySettings();
   const actions = {
     edit: (item) => controller.edit(item),
+    delete: (item) => controller.remove(item),
+    clear: () => controller.clear(),
     source: (item, close) =>
-      controller.source(item, (sessionId) => ctx.uiWorkspace.openSession(sessionId), close),
+      controller.source(
+        item,
+        (sessionId) => ctx.uiWorkspace.openSession(sessionId),
+        close,
+      ),
   };
   let identity = JSON.stringify([
     ctx.geaIdentity.getSnapshot().scope,

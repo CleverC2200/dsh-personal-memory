@@ -14,7 +14,10 @@ if (!output) throw Error("MEMORY_UI_OUTPUT required");
 const tmp = await mkdtemp(join(tmpdir(), "memory-browser-"));
 const python = spawn(
   "python3",
-  [resolve("../dsh-gea-plugin/gateway/tests/ui_fixture.py"), join(tmp, "memory.sqlite")],
+  [
+    resolve("../dsh-gea-plugin/gateway/tests/ui_fixture.py"),
+    join(tmp, "memory.sqlite"),
+  ],
   { stdio: ["ignore", "pipe", "inherit"] },
 );
 const line = await new Promise((resolve, reject) => {
@@ -22,17 +25,20 @@ const line = await new Promise((resolve, reject) => {
   reader.once("line", resolve);
   python.once("exit", () => reject(Error("gateway exited")));
 });
-const gateway = new PersonalMemoryGateway("http://127.0.0.1:" + JSON.parse(line).port, {
-  allowPrivateHttp: true,
-  timeoutMs: 2000,
-  identity: () => ({
-    token: "a",
-    scope: { environment: "production", tenantId: "10", userId: "alice" },
-    signal: new AbortController().signal,
-  }),
-  expire: () => {},
-  fetch,
-});
+const gateway = new PersonalMemoryGateway(
+  "http://127.0.0.1:" + JSON.parse(line).port,
+  {
+    allowPrivateHttp: true,
+    timeoutMs: 2000,
+    identity: () => ({
+      token: "a",
+      scope: { environment: "production", tenantId: "10", userId: "alice" },
+      signal: new AbortController().signal,
+    }),
+    expire: () => {},
+    fetch,
+  },
+);
 const identity = new AbortController();
 const service = createGeaMemoryService(
   {
@@ -71,6 +77,8 @@ const server = createServer(async (req, res) => {
         list: () => gateway.list(input, signal),
         get: () => gateway.get(input.id, signal),
         update: () => gateway.update(input, signal),
+        delete: () => gateway.delete(input, signal),
+        clear: () => gateway.clear(input, signal),
         source: () => service.source(input.id, signal),
         settings: () => gateway.settings(input, signal),
         operations: () => gateway.operation(input.operationId, signal),
@@ -92,7 +100,10 @@ const server = createServer(async (req, res) => {
       res.end();
       return;
     }
-    res.setHeader("Content-Type", req.url.endsWith(".css") ? "text/css" : "text/javascript");
+    res.setHeader(
+      "Content-Type",
+      req.url.endsWith(".css") ? "text/css" : "text/javascript",
+    );
     res.end(await readFile(join(output, req.url.slice(1))));
   } catch (error) {
     res.writeHead(400, { "Content-Type": "application/json" });
@@ -100,7 +111,9 @@ const server = createServer(async (req, res) => {
   }
 });
 server.listen(0, "127.0.0.1", () =>
-  console.log(JSON.stringify({ url: "http://127.0.0.1:" + server.address().port })),
+  console.log(
+    JSON.stringify({ url: "http://127.0.0.1:" + server.address().port }),
+  ),
 );
 async function stop() {
   server.close();
