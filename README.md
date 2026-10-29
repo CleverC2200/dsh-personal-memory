@@ -10,12 +10,11 @@ pre-step 仅接纳本次新领取且 source.kind=user 的文字，不回扫 hist
 
 ## 当前账号设置页
 
-`build:client` 编译公开 `./client` 入口，DSH 通过包元数据加载，并注册现有 `settings.section` 的“记忆与进化”。设置 shell、焦点锁定、Escape 与滚动归 Core。页面通过 `/api/gea-proof/memory/*` 调用 GEA Host，不持有登录凭据或 Hindsight key。开关按服务端当前身份保存，首次关闭；网络结果未知时查询原 operationId，阻止重复提交。设置列表支持搜索和三个分类。
+`build:client` 编译公开 `./client` 入口，DSH 通过包元数据加载，并注册现有 `settings.section` 的“记忆与进化”。CI 先构建 client，再由 `check:package` 核对 dry-run 包包含所有声明的 exports；缺少 client 产物会失败。设置 shell、焦点锁定、Escape 与滚动归 Core。页面通过 `/api/gea-proof/memory/*` 调用 GEA Host，不持有登录凭据或 Hindsight key。开关按服务端当前身份保存，首次关闭；网络结果未知时查询原 operationId，阻止重复提交。设置列表支持搜索和三个分类。
 
 协议的单一来源是同组 GEA 的 `docs/memory/protocol.md` 与 `src/shared/memory-contract.ts`。自动提取与召回走 Host-only 能力。编辑支持分类和内容、版本冲突重新加载、失败保留草稿，以及未知操作查询与同 ID 重试。来源由 Host 核持久会话归属与原消息存在性，再由 Core 打开会话；当前账号不可访问时只显示来源不可用。删除单条需二次确认，清空全部分类需输入“清空”，两者保持生成开关和聊天记录。清理结果未知时继续查询原操作；服务端完成后清除当前存活的文档、派生内容、含正文的异步任务和内容性元数据。备份与 WAL 不承诺即时擦除，恢复时须重放删除元数据。
 
 浏览器验收使用固定 Core 的真实 SlotRegistry、SettingsRoot 与公共 primitive。设置 `DSH_CORE_PATH` 和 `MEMORY_UI_OUTPUT` 后执行 `node tests/build-ui-fixture.mjs`，再以相同输出目录执行 `node tests/serve-ui-fixture.mjs`。后者使用同组 GEA Host 传输和 Python 网关，GEA/Hindsight 为本地合成 HTTP 替身；它不代表真实账号、Native 装载或服务器部署通过。
-
 
 会话在首次实际使用记忆时按 GEA 完整身份绑定。切账号会取消旧等待并清理页面草稿；带旧身份记忆的会话不能继续提交给新账号模型，恢复、fork 和压缩沿用同一限制。缺少可信归属的旧记忆历史拒绝认领。Core 本地历史仍可由同一 OS 用户查看。
 
