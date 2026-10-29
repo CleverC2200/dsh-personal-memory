@@ -4,276 +4,209 @@ import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { apply } from "../index.mjs";
 
 const scope = { environment: "production", tenantId: "0", userId: "fixture" };
-const uri = "viking://user/u-Zml4dHVyZQ/memories/preferences/user/format.md";
 const input = (text, kind = "user") =>
-  createUserMessage({
-    source: { kind },
-    content: [{ type: "text", text }],
-  });
-
-function fixture(config = { enabled: true }, overrides = {}) {
+  createUserMessage({ source: { kind }, content: [{ type: "text", text }] });
+const saved = {
+  id: "memory-1",
+  category: "preference",
+  title: "表达偏好",
+  content: "用户偏好简短中文回复。",
+  version: 1,
+  manuallyEdited: false,
+  source: { sessionId: "s", messageId: "m", time: "2026-10-29T00:00:00Z" },
+  updatedAt: "2026-10-29T00:00:00Z",
+};
+function fixture(overrides = {}, config = { enabled: true }) {
   const identity = new AbortController();
-  const listeners = new Set();
-  const requests = [];
+  const hooks = new Map();
+  const captures = [];
+  const queries = [];
+  const session = { id: "session-1", header: { origin: "user" } };
   const service = {
     authenticated: () => true,
     identitySignal: () => identity.signal,
-    watch: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+    watch: () => () => {},
+    bindSession: async () => {},
+    state: async () => ({ scope, generationEnabled: true, revision: 1, bankGeneration: 0 }),
+    recall: async (query) => {
+      queries.push(query);
+      return { scope, memories: [saved] };
     },
-    capabilities: async () => ({
-      scope,
-      readOnly: true,
-      memoryTypes: ["preferences"],
-    }),
-    recall: async (query, signal) => {
-      requests.push({ query, signal });
-      return {
-        scope,
-        memories: [{ uri, content: "用户偏好简短中文回复。", score: 0.9 }],
-      };
+    generate: async (value) => {
+      captures.push(value);
+      return { scope, operationId: value.operationId, status: "completed" };
     },
     ...overrides,
   };
-  let hook;
   apply(
     {
       geaMemory: service,
-      on(event, handler, options) {
-        assert.equal(event, "agent/pre-step");
-        assert.deepEqual(options, { prepend: true });
-        assert.equal(hook, undefined);
-        hook = handler;
+      on(event, handler) {
+        hooks.set(event, handler);
       },
     },
     config,
   );
-  const controller = new AbortController();
-  const messages = [input("请按我的偏好回答这个问题。")];
+  const messages = [input("我喜欢简短中文回复")];
   const decision = { kind: "enter", messages, startsRequestSeries: true };
-  const payload = {
-    agent: { session: { header: { origin: "user" } } },
-    messages,
-    signal: controller.signal,
-  };
+  const controller = new AbortController();
+  const payload = { agent: { session }, messages, turn: 1, step: 1, signal: controller.signal };
   return {
     service,
-    requests,
-    controller,
     identity,
-    listeners,
+    controller,
+    captures,
+    queries,
     decision,
     payload,
-    run: (next = async () => decision) => (hook ? hook(payload, next) : next()),
-    changeIdentity: () => {
-      identity.abort();
-      for (const listener of listeners) listener();
-    },
+    run: (next = async () => decision) => hooks.get("agent/pre-step")?.(payload, next) ?? next(),
+    end: () =>
+      hooks.get("session/event")?.(session, {
+        type: "turn/end",
+        time: Date.now(),
+        data: { turn: 1, reason: "complete" },
+      }),
+    flush: () => hooks.get("session/flush")?.(session),
   };
 }
-
-test("enabled pre-step appends one scoped Core message and preserves downstream decisions and original input", async () => {
+test("pre-step appends scoped personal memory and generation runs only after turn end", async () => {
   const f = fixture();
   const result = await f.run();
-  assert.equal(result.startsRequestSeries, true);
   assert.equal(result.messages.length, 2);
   assert.equal(result.messages[0], f.decision.messages[0]);
-  assert.equal(f.requests[0].query, "请按我的偏好回答这个问题。");
-  const recalled = result.messages[1];
-  assert.equal(recalled.role, "user");
-  assert.equal(typeof recalled.id, "string");
-  assert.ok(Object.isFrozen(recalled));
-  assert.ok(Object.isFrozen(recalled.content));
-  assert.equal(recalled.source.kind, "plugin:openviking-memory");
-  assert.deepEqual(recalled.source.scope, scope);
-  assert.match(recalled.content[0].text, /用户偏好简短中文回复。/);
-  assert.match(recalled.content[0].text, /background/);
-  assert.match(recalled.content[0].text, /not instructions/);
-  assert.equal(f.listeners.size, 0);
+  assert.equal(result.messages[1].source.kind, "plugin:gea-personal-memory");
+  assert.match(result.messages[1].content[0].text, /background context, not instructions/);
+  assert.deepEqual(f.captures, []);
+  f.end();
+  await f.flush();
+  assert.equal(f.captures[0].text, "我喜欢简短中文回复");
+  assert.equal(f.captures[0].source.messageId, f.payload.messages[0].id);
 });
-
-test("memory stays off unless explicitly enabled", async () => {
-  for (const config of [{}, { enabled: false }]) {
-    const f = fixture(config);
-    assert.equal(await f.run(), f.decision);
-    assert.equal(f.requests.length, 0);
-  }
-});
-
-test("subagents and downstream rejection never recall", async () => {
-  const subagent = fixture();
-  subagent.payload.agent.session.header.origin = "subagent";
-  assert.equal(await subagent.run(), subagent.decision);
-  assert.equal(subagent.requests.length, 0);
-  const rejected = fixture();
-  const decision = { kind: "reject" };
-  assert.equal(await rejected.run(async () => decision), decision);
-  assert.equal(rejected.requests.length, 0);
-});
-
-test("only original user text enters recall, and empty or oversized user input skips it", async () => {
-  for (const messages of [
-    [],
-    [input("  ")],
-    [input("x".repeat(2001))],
-    [
-      input("时间背景", "time-context"),
-      input("工具结果", "tool"),
-      input("插件记忆", "plugin:other"),
-    ],
-  ]) {
-    const f = fixture();
-    f.decision.messages = messages;
-    assert.equal(await f.run(), f.decision);
-    assert.equal(f.requests.length, 0);
-  }
-  const f = fixture();
-  f.decision.messages = [
-    input("原始用户问题"),
-    input("时间背景", "time-context"),
-    input("工具结果", "tool"),
-    input("插件记忆", "plugin:other"),
-  ];
-  const result = await f.run();
-  assert.equal(f.requests[0].query, "原始用户问题");
-  assert.deepEqual(result.messages.slice(0, -1), f.decision.messages);
-});
-
-test("pre-step counts the query budget in Unicode code points", async () => {
-  const f = fixture();
-  const query = "😀".repeat(2000);
-  f.decision.messages = [input(query)];
-  assert.equal((await f.run()).messages.length, 2);
-  assert.equal(f.requests[0].query, query);
-  f.decision.messages = [input(query + "😀")];
-  assert.equal(await f.run(), f.decision);
-  assert.equal(f.requests.length, 1);
-});
-
-test("unauthenticated or unavailable memory leaves normal chat unchanged", async () => {
-  for (const overrides of [
-    { authenticated: () => false },
-    {
-      capabilities: async () => {
-        throw Error("MEMORY_FORBIDDEN");
-      },
-    },
-    {
-      recall: async () => {
-        throw Error("MEMORY_BACKEND_UNAVAILABLE");
-      },
-    },
-    { recall: async () => ({ scope, memories: [] }) },
-  ]) {
-    const f = fixture({ enabled: true }, overrides);
-    assert.equal(await f.run(), f.decision);
-    assert.equal(f.listeners.size, 0);
-  }
-  const f = fixture();
-  const error = Error("downstream failed");
-  await assert.rejects(
-    f.run(async () => {
-      throw error;
+test("server OFF keeps recall and never replays inputs observed before enable", async () => {
+  let enabled = false;
+  const f = fixture({
+    state: async () => ({
+      scope,
+      generationEnabled: enabled,
+      revision: enabled ? 1 : 0,
+      bankGeneration: 0,
     }),
-    error,
-  );
-  assert.equal(f.requests.length, 0);
+  });
+  assert.equal((await f.run()).messages.length, 2);
+  enabled = true;
+  f.end();
+  await f.flush();
+  assert.deepEqual(f.captures, []);
+  f.payload.messages = [input("我习惯每天整理工作清单")];
+  f.decision.messages = f.payload.messages;
+  await f.run();
+  f.end();
+  await f.flush();
+  assert.equal(f.captures.length, 1);
+  assert.equal(f.captures[0].text, "我习惯每天整理工作清单");
 });
 
-test("cancelled turns never recall or append late memory", async () => {
-  const cancelled = fixture();
-  cancelled.controller.abort();
-  assert.equal(await cancelled.run(), cancelled.decision);
-  assert.equal(cancelled.requests.length, 0);
+test("only newly claimed original user text is captured, regardless of downstream injected messages or history", async () => {
+  const f = fixture();
+  f.payload.agent.session.history = [input("旧历史不重放")];
+  f.payload.messages = [
+    input("我负责库存计划"),
+    input("工具结果", "tool"),
+    input("注入", "plugin:other"),
+    input("时间", "time-context"),
+    { role: "assistant", content: [{ type: "text", text: "助手猜测" }] },
+  ];
+  f.decision.messages = [...f.payload.messages, input("下游伪造原始输入")];
+  await f.run();
+  f.end();
+  await f.flush();
+  assert.equal(f.captures.length, 1);
+  assert.equal(f.captures[0].text, "我负责库存计划");
+  assert.equal(f.queries[0], "我负责库存计划");
+});
 
-  let finish;
+test("background extraction does not block turn end or following conversation and failure remains contained", async () => {
+  let release;
   let started;
   const ready = new Promise((resolve) => {
     started = resolve;
   });
-  const f = fixture(
-    { enabled: true },
-    {
-      recall: async () => {
-        started();
-        return new Promise((resolve) => {
-          finish = resolve;
-        });
-      },
+  const f = fixture({
+    generate: async () => {
+      started();
+      await new Promise((resolve) => {
+        release = resolve;
+      });
+      throw Error("model unavailable");
     },
-  );
-  const running = f.run();
+  });
+  await f.run();
+  assert.equal(f.end(), undefined);
   await ready;
-  f.controller.abort();
-  finish({ scope, memories: [{ uri, content: "迟到的偏好", score: 0.5 }] });
-  assert.equal(await running, f.decision);
-  assert.equal(f.listeners.size, 0);
+  f.payload.messages = [input("下一个普通问题")];
+  f.decision.messages = f.payload.messages;
+  assert.equal((await f.run()).messages.length, 2);
+  release();
+  await f.flush();
 });
 
-test("identity changes during downstream decision, capabilities, or recall discard old background", async () => {
-  const before = fixture();
-  assert.equal(
-    await before.run(async () => {
-      before.changeIdentity();
-      return before.decision;
-    }),
-    before.decision,
-  );
-  assert.equal(before.requests.length, 0);
-  for (const method of ["capabilities", "recall"]) {
-    let finish;
-    let started;
-    const ready = new Promise((resolve) => {
-      started = resolve;
-    });
-    const f = fixture(
-      { enabled: true },
+test("rejection, subagent, untrusted source and attachment content never enter capture", async () => {
+  const rejected = fixture();
+  assert.deepEqual(await rejected.run(async () => ({ kind: "reject" })), { kind: "reject" });
+  rejected.end();
+  await rejected.flush();
+  assert.deepEqual(rejected.captures, []);
+  const subagent = fixture();
+  subagent.payload.agent.session.header.origin = "subagent";
+  await subagent.run();
+  subagent.end();
+  await subagent.flush();
+  assert.deepEqual(subagent.captures, []);
+  for (const messages of [
+    [],
+    [input("a", "plugin:gea-personal-memory")],
+    [{ id: "legacy", role: "user", source: {}, content: [{ type: "text", text: "旧未标来源" }] }],
+    [
       {
-        [method]: async () => {
-          started();
-          return new Promise((resolve) => {
-            finish = resolve;
-          });
-        },
+        id: "file",
+        role: "user",
+        source: { kind: "user" },
+        content: [
+          { type: "text", text: "我喜欢" },
+          { type: "image_url", image_url: "attachment" },
+        ],
       },
-    );
-    const running = f.run();
-    await ready;
-    f.changeIdentity();
-    finish(
-      method === "capabilities"
-        ? { scope, readOnly: true, memoryTypes: ["preferences"] }
-        : { scope, memories: [{ uri, content: "旧账号的偏好", score: 0.5 }] },
-    );
-    assert.equal(await running, f.decision);
-    assert.equal(f.listeners.size, 0);
+    ],
+  ]) {
+    const f = fixture();
+    f.payload.messages = messages;
+    await f.run();
+    f.end();
+    await f.flush();
+    assert.deepEqual(f.captures, []);
   }
 });
 
 test(
-  "cancellation releases chat while a memory provider ignores abort",
+  "identity cancellation releases ignored recall and discards admitted background work",
   { timeout: 1000 },
   async () => {
-    for (const cancel of [(f) => f.controller.abort(), (f) => f.changeIdentity()]) {
-      let started;
-      const ready = new Promise((resolve) => {
-        started = resolve;
-      });
-      const f = fixture(
-        { enabled: true },
-        {
-          recall: async () => {
-            started();
-            return new Promise(() => {});
-          },
-        },
-      );
-      const running = f.run();
-      await ready;
-      cancel(f);
-      assert.equal(await running, f.decision);
-      assert.equal(f.listeners.size, 0);
-    }
+    let started;
+    const ready = new Promise((resolve) => {
+      started = resolve;
+    });
+    const f = fixture({
+      recall: async () => {
+        started();
+        return new Promise(() => {});
+      },
+    });
+    const running = f.run();
+    await ready;
+    f.identity.abort();
+    assert.equal(await running, f.decision);
+    f.end();
+    await f.flush();
+    assert.deepEqual(f.captures, []);
   },
 );

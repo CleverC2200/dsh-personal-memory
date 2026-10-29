@@ -1,5 +1,3 @@
 - insert:
     - id: gea-personal-memory
       name: "@cleverc2200/dsh-personal-memory"
-      config:
-        enabled: false

@@ -28,7 +28,8 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "check:package": "npm pack --ignore-scripts --dry-run",
-    "build:client": "node scripts/build.mjs"
+    "build:client": "node scripts/build.mjs",
+    "test:integration": "node --test tests/agent-http.integration.mjs"
   },
   "peerDependencies": {
     "@cleverc2200/gea-dsh-prototype": ">=0.0.203 <0.1.0",
