@@ -6,6 +6,12 @@ export function createMemorySettings({ fetch: transport = globalThis.fetch } = {
     saving: false,
     error: "",
     pending: null,
+    editing: null,
+    editPending: null,
+    editSaving: false,
+    editError: "",
+    editStatus: null,
+    sourceBusy: null,
   };
   const listeners = new Set();
   let lifetime = new AbortController();
@@ -93,6 +99,91 @@ export function createMemorySettings({ fetch: transport = globalThis.fetch } = {
       if (identity === lifetime) publish({ saving: false });
     }
   }
+  async function saveEdit(verify = false, retry = false) {
+    if (!snapshot.editing || snapshot.editSaving || (!verify && snapshot.editPending && !retry))
+      return;
+    if (!snapshot.editing.content.trim()) {
+      publish({ editError: "记忆内容不能为空。" });
+      return;
+    }
+    const identity = lifetime;
+    const pending = snapshot.editPending ?? {
+      id: snapshot.editing.id,
+      category: snapshot.editing.category,
+      content: snapshot.editing.content.trim(),
+      expectedVersion: snapshot.editing.version,
+      expectedRevision: snapshot.state.revision,
+      bankGeneration: snapshot.state.bankGeneration,
+      operationId: crypto.randomUUID(),
+    };
+    publish({ editSaving: true, editPending: pending, editError: "", editStatus: "processing" });
+    try {
+      let result;
+      if (verify) {
+        try {
+          result = await request("operations", { operationId: pending.operationId }, identity);
+        } catch (error) {
+          if (error.message !== "MEMORY_NOT_FOUND") throw error;
+        }
+      }
+      if (!result) result = await request("update", pending, identity);
+      if (identity !== lifetime) return;
+      if (result.status === "completed") {
+        publish({
+          state: result.state,
+          editing: null,
+          editPending: null,
+          editError: "",
+          editStatus: null,
+        });
+        await load();
+      } else if (result.status === "failed") {
+        publish({
+          state: result.state,
+          editPending: null,
+          editStatus: null,
+          editError: "保存失败，草稿已保留，请重试。",
+        });
+      } else
+        publish({ editStatus: result.status, editError: "保存结果待确认，请查询原操作后继续。" });
+    } catch (error) {
+      if (identity !== lifetime || identity.signal.aborted) return;
+      if (
+        [
+          "MEMORY_VERSION_CONFLICT",
+          "MEMORY_OPERATION_CONFLICT",
+          "MEMORY_INVALID_REQUEST",
+          "MEMORY_OPERATION_PENDING",
+        ].includes(error.message)
+      )
+        publish({
+          editPending: null,
+          editStatus: null,
+          editError:
+            error.message === "MEMORY_VERSION_CONFLICT"
+              ? "这条记忆已在其他位置更新，草稿已保留，请重新加载后再编辑。"
+              : "保存未成功，草稿已保留，请重新加载后重试。",
+        });
+      else publish({ editStatus: "unknown", editError: "保存结果待确认，请查询原操作后继续。" });
+    } finally {
+      if (identity === lifetime) publish({ editSaving: false });
+    }
+  }
+  async function reloadEdit() {
+    if (!snapshot.editing || snapshot.editSaving || snapshot.editPending) return;
+    const identity = lifetime;
+    const id = snapshot.editing.id;
+    publish({ editSaving: true });
+    try {
+      const result = await request("get", { id }, identity);
+      const state = await request("state", {}, identity);
+      if (identity === lifetime) publish({ editing: { ...result.item }, state, editError: "" });
+    } catch {
+      if (identity === lifetime) publish({ editError: "重新加载失败，草稿已保留。" });
+    } finally {
+      if (identity === lifetime) publish({ editSaving: false });
+    }
+  }
   return {
     getSnapshot: () => snapshot,
     subscribe(listener) {
@@ -100,8 +191,46 @@ export function createMemorySettings({ fetch: transport = globalThis.fetch } = {
       return () => listeners.delete(listener);
     },
     load,
+    edit(item) {
+      if (snapshot.saving || snapshot.pending || snapshot.editPending) return;
+      publish({ editing: { ...item }, editError: "" });
+    },
+    changeEdit(patch) {
+      if (snapshot.editing && !snapshot.editSaving && !snapshot.editPending)
+        publish({ editing: { ...snapshot.editing, ...patch }, editError: "" });
+    },
+    cancelEdit() {
+      if (!snapshot.editSaving && !snapshot.editPending) publish({ editing: null, editError: "" });
+    },
+    saveEdit: () => saveEdit(false),
+    verifyEdit: () => saveEdit(true),
+    retryEdit: () =>
+      snapshot.editStatus === "unknown" ? saveEdit(false, true) : Promise.resolve(),
+    reloadEdit,
+    async source(item, navigate, close) {
+      if (snapshot.sourceBusy) return;
+      const identity = lifetime;
+      publish({ sourceBusy: item.id, error: "" });
+      try {
+        const result = await request("source", { id: item.id }, identity);
+        if (identity !== lifetime) return;
+        await navigate(result.sessionId);
+        if (identity === lifetime) close?.();
+      } catch {
+        if (identity === lifetime) publish({ error: "来源不可用或当前账号无权访问。" });
+      } finally {
+        if (identity === lifetime) publish({ sourceBusy: null });
+      }
+    },
     toggle(enabled) {
-      if (snapshot.saving || snapshot.pending || !snapshot.state) return Promise.resolve();
+      if (
+        snapshot.saving ||
+        snapshot.pending ||
+        snapshot.editPending ||
+        snapshot.editSaving ||
+        !snapshot.state
+      )
+        return Promise.resolve();
       return save(
         {
           generationEnabled: enabled,
@@ -119,7 +248,20 @@ export function createMemorySettings({ fetch: transport = globalThis.fetch } = {
       lifetime.abort();
       lifetime = new AbortController();
       loading = undefined;
-      publish({ state: null, items: [], loading: false, saving: false, error: "", pending: null });
+      publish({
+        state: null,
+        items: [],
+        loading: false,
+        saving: false,
+        error: "",
+        pending: null,
+        editing: null,
+        editPending: null,
+        editSaving: false,
+        editError: "",
+        editStatus: null,
+        sourceBusy: null,
+      });
     },
     dispose() {
       lifetime.abort();

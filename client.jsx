@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
-import { Button, Input, Switch } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Input, Switch, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import { createMemorySettings } from "./settings.mjs";
 import styles from "./memory.css";
 
-export const inject = ["slots", "geaIdentity"];
+export const inject = ["slots", "geaIdentity", "uiWorkspace"];
 export const sectionId = "gea-personal-memory";
 const categories = [
   ["", "全部"],
@@ -81,7 +81,9 @@ export function MemorySection({ controller, actions, close }) {
             {view.saving
               ? "保存中…"
               : !view.state
-                ? "读取中…"
+                ? view.loading
+                  ? "读取中…"
+                  : "暂不可用"
                 : view.state.generationEnabled
                   ? "已开启"
                   : "已关闭"}
@@ -89,7 +91,9 @@ export function MemorySection({ controller, actions, close }) {
           <Switch
             checked={view.state?.generationEnabled === true}
             onChange={(enabled) => void controller.toggle(enabled)}
-            disabled={!view.state || view.saving || !!view.pending}
+            disabled={
+              !view.state || view.saving || !!view.pending || view.editSaving || !!view.editPending
+            }
             label="生成对话记忆"
           />
         </div>
@@ -175,6 +179,7 @@ export function MemorySection({ controller, actions, close }) {
                     <Button
                       size="sm"
                       onClick={() => actions.source(item, close)}
+                      disabled={!!view.sourceBusy}
                       aria-label={`查看来源：${item.title}`}
                     >
                       来源
@@ -184,6 +189,7 @@ export function MemorySection({ controller, actions, close }) {
                     <Button
                       size="sm"
                       onClick={() => actions.edit(item)}
+                      disabled={view.saving || !!view.pending || !!view.editPending}
                       aria-label={`编辑记忆：${item.title}`}
                     >
                       编辑
@@ -204,11 +210,100 @@ export function MemorySection({ controller, actions, close }) {
           ))
         )}
       </div>
+      <Modal
+        open={!!view.editing}
+        title="编辑记忆"
+        closeLabel="关闭编辑"
+        onClose={() => controller.cancelEdit()}
+        className="gea-memory-editor"
+        contentClassName="gea-memory-edit-content"
+        description="修改分类和内容，保存后自动生成不会覆盖这条记忆。"
+        footer={
+          <>
+            <Button
+              onClick={() => controller.cancelEdit()}
+              disabled={view.editSaving || !!view.editPending}
+            >
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() =>
+                void (view.editPending ? controller.verifyEdit() : controller.saveEdit())
+              }
+              disabled={view.editSaving || (!view.editPending && !view.editing?.content.trim())}
+            >
+              {view.editSaving ? "保存中…" : view.editPending ? "查询结果" : "保存修改"}
+            </Button>
+          </>
+        }
+      >
+        {view.editing && (
+          <div className="gea-memory-edit-form">
+            <label htmlFor="gea-memory-edit-category">分类</label>
+            <select
+              id="gea-memory-edit-category"
+              value={view.editing.category}
+              disabled={view.editSaving || !!view.editPending}
+              onChange={(event) => controller.changeEdit({ category: event.target.value })}
+            >
+              {categories
+                .filter(([id]) => id)
+                .map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+            </select>
+            <label htmlFor="gea-memory-edit-content">记忆内容</label>
+            <textarea
+              id="gea-memory-edit-content"
+              data-modal-autofocus
+              value={view.editing.content}
+              maxLength={6000}
+              disabled={view.editSaving || !!view.editPending}
+              rows={6}
+              onChange={(event) => controller.changeEdit({ content: event.target.value })}
+            />
+            <small className="gea-memory-edit-count">{view.editing.content.length} 字</small>
+            <p className="gea-memory-edit-hint">来源：原对话。修改后将标记为“你已编辑”。</p>
+            {!view.editing.content.trim() && <p role="status">记忆内容不能为空。</p>}
+            {view.editError && (
+              <div className="gea-memory-edit-error" role="alert">
+                <p>{view.editError}</p>
+                {view.editPending && view.editStatus === "unknown" && (
+                  <Button
+                    size="sm"
+                    onClick={() => void controller.retryEdit()}
+                    disabled={view.editSaving}
+                  >
+                    重试原操作
+                  </Button>
+                )}
+                {!view.editPending && (
+                  <Button
+                    size="sm"
+                    onClick={() => void controller.reloadEdit()}
+                    disabled={view.editSaving}
+                  >
+                    重新加载
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </section>
   );
 }
 export function apply(ctx) {
   const controller = createMemorySettings();
+  const actions = {
+    edit: (item) => controller.edit(item),
+    source: (item, close) =>
+      controller.source(item, (sessionId) => ctx.uiWorkspace.openSession(sessionId), close),
+  };
   let identity = JSON.stringify([
     ctx.geaIdentity.getSnapshot().scope,
     ctx.geaIdentity.getSnapshot().state,
@@ -235,7 +330,7 @@ export function apply(ctx) {
         id: sectionId,
         order: Number.MAX_VALUE,
         label: () => "记忆与进化",
-        inject: () => ({ controller }),
+        inject: () => ({ controller, actions }),
       },
       MemorySection,
     ),

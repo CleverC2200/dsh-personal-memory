@@ -4,7 +4,11 @@ import { createInterface } from "node:readline";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { PersonalMemoryGateway } from "../../dsh-gea-plugin/src/host/memory-service.ts";
+import { MemorySessionLedger } from "../../dsh-gea-plugin/src/host/memory-session-ledger.ts";
+import {
+  createGeaMemoryService,
+  PersonalMemoryGateway,
+} from "../../dsh-gea-plugin/src/host/memory-service.ts";
 const output = process.env.MEMORY_UI_OUTPUT;
 if (!output) throw Error("MEMORY_UI_OUTPUT required");
 const tmp = await mkdtemp(join(tmpdir(), "memory-browser-"));
@@ -29,6 +33,31 @@ const gateway = new PersonalMemoryGateway("http://127.0.0.1:" + JSON.parse(line)
   expire: () => {},
   fetch,
 });
+const identity = new AbortController();
+const service = createGeaMemoryService(
+  {
+    memory: gateway,
+    identitySignal: () => identity.signal,
+    status: () => ({ authenticated: true }),
+    watchIdentity: () => () => {},
+  },
+  {
+    ledger: new MemorySessionLedger(tmp),
+    sessions: {
+      inspect: async (sessionId) => {
+        if (sessionId !== "synthetic-session") throw Error("SESSION_NOT_FOUND");
+        return {
+          meta: { id: sessionId },
+          events: Array.from({ length: 4 }, (_, index) => ({
+            type: "user/message",
+            data: { id: "synthetic-message-" + index },
+          })),
+        };
+      },
+    },
+  },
+);
+await service.bindSession("synthetic-session", identity.signal);
 const server = createServer(async (req, res) => {
   try {
     if (req.url.startsWith("/api/gea-proof/memory/")) {
@@ -40,6 +69,9 @@ const server = createServer(async (req, res) => {
       const methods = {
         state: () => gateway.state(signal),
         list: () => gateway.list(input, signal),
+        get: () => gateway.get(input.id, signal),
+        update: () => gateway.update(input, signal),
+        source: () => service.source(input.id, signal),
         settings: () => gateway.settings(input, signal),
         operations: () => gateway.operation(input.operationId, signal),
       };
