@@ -44,3 +44,11 @@ sequenceDiagram
 初始插件源码来自 `CleverC2200/dsh-gea-plugin` 候选提交 `408fce84113f12e3a78027baae25458bfed1adc0` 的 `plugins/personal-memory/`。运行时源码保持原样，测试拆出不依赖 GEA 仓库的部分；跨仓 Host 集成测试仍保留在 GEA 候选中。
 
 上游复用文件及改动见 [NOTICE.md](NOTICE.md)，其 Apache 2.0 许可保留在 [vendor/LICENSE](vendor/LICENSE)。本包原有 `private: true` 与 `UNLICENSED` 声明保持，不因公开托管自动发布 npm 或新增许可授权。
+
+## 当前账号设置页
+
+`build:client` 编译公开 `./client` 入口，DSH 通过包元数据加载，并注册现有 `settings.section` 的“记忆与进化”。设置 shell、焦点锁定、Escape 与滚动归 Core。页面通过 `/api/gea-proof/memory/*` 调用 GEA Host，不持有登录凭据或 Hindsight key。开关按服务端当前身份保存，首次关闭；网络结果未知时查询原 operationId，阻止重复提交。设置列表支持搜索和三个分类。
+
+协议的单一来源是同组 GEA 的 `docs/memory/protocol.md` 与 `src/shared/memory-contract.ts`。自动提取、来源授权及维护动作由后续票接入，当前入口不会伪造这些动作成功。
+
+浏览器验收使用固定 Core 的真实 SlotRegistry、SettingsRoot 与公共 primitive。设置 `DSH_CORE_PATH` 和 `MEMORY_UI_OUTPUT` 后执行 `node tests/build-ui-fixture.mjs`，再以相同输出目录执行 `node tests/serve-ui-fixture.mjs`。后者使用同组 GEA Host 传输和 Python 网关，GEA/Hindsight 为本地合成 HTTP 替身；它不代表真实账号、Native 装载或服务器部署通过。
