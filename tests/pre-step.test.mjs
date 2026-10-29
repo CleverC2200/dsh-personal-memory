@@ -60,12 +60,21 @@ function fixture(overrides = {}, config = { enabled: true }) {
     decision,
     payload,
     run: (next = async () => decision) => hooks.get("agent/pre-step")?.(payload, next) ?? next(),
-    end: () =>
-      hooks.get("session/event")?.(session, {
+    end: (commit = true) => {
+      if (commit)
+        for (const message of decision.messages)
+          if (message.role === "user")
+            hooks.get("session/event")?.(session, {
+              type: "user/message",
+              time: Date.now(),
+              data: message,
+            });
+      return hooks.get("session/event")?.(session, {
         type: "turn/end",
         time: Date.now(),
         data: { turn: 1, reason: "complete" },
-      }),
+      });
+    },
     flush: () => hooks.get("session/flush")?.(session),
   };
 }
@@ -210,3 +219,11 @@ test(
     assert.deepEqual(f.captures, []);
   },
 );
+
+test("a cancelled or discarded input without a committed user message never generates a source record", async () => {
+  const f = fixture();
+  await f.run();
+  f.end(false);
+  await f.flush();
+  assert.deepEqual(f.captures, []);
+});

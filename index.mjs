@@ -43,6 +43,7 @@ export function apply(ctx) {
             if (!accepted.has(message.id))
               accepted.set(message.id, {
                 identity,
+                committed: false,
                 state,
                 text,
                 source: { sessionId, messageId: message.id, time: new Date().toISOString() },
@@ -78,8 +79,10 @@ export function apply(ctx) {
     if (event.type === "user/message") {
       for (const accepted of admissions.values()) {
         const capture = accepted.get(event.data.id);
-        if (capture && capture.source.sessionId === session.id)
+        if (capture && capture.source.sessionId === session.id) {
           capture.source.time = new Date(event.time).toISOString();
+          capture.committed = true;
+        }
       }
       return;
     }
@@ -89,6 +92,7 @@ export function apply(ctx) {
     admissions.delete(key);
     if (!accepted) return;
     for (const capture of accepted.values()) {
+      if (!capture.committed) continue;
       const task = queue.then(async () => {
         if (
           capture.identity.aborted ||
