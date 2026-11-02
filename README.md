@@ -1,46 +1,25 @@
-# GEA 个人记忆只读插件
+# GEA 个人记忆插件
 
-本包独立安装、独立启用，默认关闭。需要带 `geaMemory` Host 能力的 GEA `0.0.183` 和固定 Core `0.2.0-rc.2`。仅安装同版本号的旧 GEA 不能提供这项能力。
+独立插件通过 GEA Host 管理当前账号的记忆。安装后正常激活，生成开关只由服务端当前完整身份保存，首次关闭。关闭生成后已有记忆仍参与召回，插件整体停用走 Core 插件管理。凭据、Hindsight 地址和服务器模型配置由 GEA/公司网关持有。
 
-普通 bundle 导入本包的 `cordis.patch.yml` 后，在该插件条目的 `config` 显式设置：
+pre-step 仅接纳本次新领取且 source.kind=user 的文字，不回扫 history、replay 或 seed。按已验证开关与版本准入后，在对应 turn/end 后串行后台提取稳定工作背景、表达偏好与工作习惯，不等待提取完成即可继续聊天。助手、工具、插件注入、附件内容、引用、假设、凭据和临时任务不进入保存。没有候选不产生条目。来源 ID 和时间取自已提交的新消息事件。
 
-```yaml
-- id: gea-personal-memory
-  config:
-    enabled: true
-```
+召回通过 Host 当前身份请求，只向模型追加一条带 plugin:gea-personal-memory 与 scope 的背景消息。取消或身份切换后旧结果不追加；失败继续聊天。新生成、手工维护与删除屏障的协议单一来源是同组 GEA 的 docs/memory/protocol.md 和 src/shared/memory-contract.ts。正文只存 Hindsight；本插件不保存输入副本。
 
-GEA Host 由管理员配置公司记忆入口，当前用户需已登录并列入入口白名单。此插件只接受 `enabled` 开关，不配置 token、OpenViking 地址或密钥，也不接受 account/user 归属参数。关闭时设置 `enabled: false`；GEA 登录与身份状态仍由 Host 管理。
+源码测试使用固定 Core 的真实消息构造器，tests/agent-http.integration.mjs 还装载真实 AgentLoop、Session、插件事件、Host传输和本地公司网关，外部GEA、模型及Hindsight为HTTP合成替身。测试使用同组 ../dsh-gea-plugin 和 ../../official-latest-standard，可通过 DSH_CORE_PATH 指定本票固定Core。npm run test:integration 运行该组合验收，npm test 运行独立插件测试。该组合实际使用 Host 的持久会话账本，但不证明真实账号、服务器部署、Native 或正式发行。
 
-插件只在 `agent/pre-step` 对本次原始用户文字召回偏好，跳过子会话、工具和其他插件注入的内容。空文字或超过入口 2000 字符限制的输入跳过召回，原用户消息保持完整。召回内容通过 Core `createUserMessage` 构造为带上游来源与 GEA scope 的背景消息，每次 hook 最多追加一条。下游决定的其他字段保留。取消、退出、切账号或切环境后旧结果不会追加；召回失败继续原聊天。
+## 当前账号设置页
 
-本包不采集聊天、不启动 profile、不写记忆，不创建 OV Session 或 pending 队列，不挂载 MCP。包内的上游 `capture.mjs` 只提供输入提取与 Core 消息构造函数，未注册 capture 事件。
+`build:client` 编译公开 `./client` 入口，DSH 通过包元数据加载，并注册现有 `settings.section` 的“记忆与进化”。CI 先构建 client，再由 `check:package` 核对 dry-run 包包含所有声明的 exports；缺少 client 产物会失败。设置 shell、焦点锁定、Escape 与滚动归 Core。页面通过 `/api/gea-proof/memory/*` 调用 GEA Host，不持有登录凭据或 Hindsight key。开关按服务端当前身份保存，首次关闭；网络结果未知时查询原 operationId，阻止重复提交。设置列表支持搜索和三个分类。
 
-从本包目录运行 `npm pack --ignore-scripts --pack-destination <自有输出目录>` 可生成独立包，无需根仓构建。源码测试使用固定版本的真实 Core 消息构造器。开发时执行 `npm ci --ignore-scripts`、`npm test` 和 `npm run check:package`。离线 fixture 和 tarball 核对不代表已安装、真实用户登录验收或发布。
+协议的单一来源是同组 GEA 的 `docs/memory/protocol.md` 与 `src/shared/memory-contract.ts`。自动提取与召回走 Host-only 能力。编辑支持分类和内容、版本冲突重新加载、失败保留草稿，以及未知操作查询与同 ID 重试。来源由 Host 核持久会话归属与原消息存在性，再由 Core 打开会话；当前账号不可访问时只显示来源不可用。删除单条需二次确认，清空全部分类需输入“清空”，两者保持生成开关和聊天记录。清理结果未知时继续查询原操作；服务端完成后清除当前存活的文档、派生内容、含正文的异步任务和内容性元数据。备份与 WAL 不承诺即时擦除，恢复时须重放删除元数据。
 
-## 接入关系与当前状态
+浏览器验收使用固定 Core 的真实 SlotRegistry、SettingsRoot 与公共 primitive。设置 `DSH_CORE_PATH` 和 `MEMORY_UI_OUTPUT` 后执行 `node tests/build-ui-fixture.mjs`，再以相同输出目录执行 `node tests/serve-ui-fixture.mjs`。后者使用同组 GEA Host 传输和 Python 网关，GEA/Hindsight 为本地合成 HTTP 替身；它不代表真实账号、Native 装载或服务器部署通过。
 
-```mermaid
-sequenceDiagram
-    participant DSH as DSH 记忆插件
-    participant GEA as GEA Host
-    participant Gateway as 公司记忆入口
-    participant OV as 公司 OpenViking
-    DSH->>GEA: 当前用户问题，只读召回
-    GEA->>Gateway: 携带当前登录凭据
-    Gateway->>Gateway: 验证身份并确定用户存储范围
-    Gateway->>OV: 查询该用户的 preferences
-    OV-->>DSH: 经入口和 GEA 返回偏好背景
-```
-
-本仓库只维护客户端插件。GEA Host 的 `geaMemory` 能力及公司入口由 GEA 项目维护，服务器配置由管理员管理。插件不持有服务器密钥，不选择用户或租户。GEA 声明为可选安装 peer，便于单独开发和打包；实际启用仍由 Cordis 的 `geaMemory` 注入依赖约束。
-
-当前是只读试点源码，默认关闭；没有 npm 发布、正式客户端安装或自动记忆写入。GEA 能力尚在候选分支，`0.0.183` 版本号本身不能证明兼容。接入前必须确认实际 GEA 构建含该能力。
-
-本仓库 CI 运行独立 hook 行为测试和打包检查。真实 GEA Host 联调及账号、服务器验收由对应集成环境验证，不由本仓库单元测试替代。
+会话在首次实际使用记忆时按 GEA 完整身份绑定。切账号会取消旧等待并清理页面草稿；带旧身份记忆的会话不能继续提交给新账号模型，恢复、fork 和压缩沿用同一限制。缺少可信归属的旧记忆历史拒绝认领。Core 本地历史仍可由同一 OS 用户查看。
 
 ## 来源与许可
 
-初始插件源码来自 `CleverC2200/dsh-gea-plugin` 候选提交 `408fce84113f12e3a78027baae25458bfed1adc0` 的 `plugins/personal-memory/`。运行时源码保持原样，测试拆出不依赖 GEA 仓库的部分；跨仓 Host 集成测试仍保留在 GEA 候选中。
+旧试点源自 GEA 408fce84 的 plugins/personal-memory，本轮已替换旧 OV 执行合同。上游许可与来源保留在 [NOTICE.md](NOTICE.md) 和 [vendor/LICENSE](vendor/LICENSE)。本包保持 private 与 UNLICENSED，不自动发布 npm。
 
-上游复用文件及改动见 [NOTICE.md](NOTICE.md)，其 Apache 2.0 许可保留在 [vendor/LICENSE](vendor/LICENSE)。本包原有 `private: true` 与 `UNLICENSED` 声明保持，不因公开托管自动发布 npm 或新增许可授权。
+在合成 fixture 服务给出 URL 后，设置 MEMORY_UI_URL 与同一 MEMORY_UI_OUTPUT，运行 node --test tests/edit.browser.mjs 可验证编辑、冲突、未知回执、来源成功/失败、Escape 焦点恢复和初次读取失败文案。浏览器测试使用同组 GEA 的 Playwright 依赖。该服务只用公开 HTTP 生成合成条目，并通过 Host-only bindSession 建立合成来源绑定，没有浏览器自授 sessionId 的入口。

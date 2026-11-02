@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "通过 GEA Host 召回当前用户偏好的独立只读 DSH 插件。",
+  "description": "通过 GEA Host 管理和召回当前账号个人记忆的独立 DSH 插件。",
   "main": "./index.mjs",
   "types": "./index.d.mts",
   "exports": {
@@ -12,7 +12,8 @@
       "default": "./index.mjs"
     },
     "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./lib/client.js"
   },
   "files": [
     "index.mjs",
@@ -20,14 +21,18 @@
     "cordis.patch.yml",
     "vendor",
     "README.md",
-    "NOTICE.md"
+    "NOTICE.md",
+    "lib/client.js",
+    "settings.mjs"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check:package": "npm pack --ignore-scripts --dry-run"
+    "check:package": "node scripts/check-package.mjs",
+    "build:client": "node scripts/build.mjs",
+    "test:integration": "node --test tests/*.integration.mjs"
   },
   "peerDependencies": {
-    "@cleverc2200/gea-dsh-prototype": "0.0.183",
+    "@cleverc2200/gea-dsh-prototype": ">=0.0.203 <0.1.0",
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
@@ -36,6 +41,17 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@cleverc2200/gea-dsh-prototype"
+      ],
+      "external": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
     }
   },
   "engines": {
@@ -59,6 +75,7 @@
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4"
+    "@deepseek-ai/schemastery": "3.18.4",
+    "esbuild": "^0.25.9"
   }
 }

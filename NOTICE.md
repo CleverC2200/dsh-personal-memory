@@ -1,12 +1,9 @@
 # 上游复用来源
 
-OpenViking 固定提交 `2425cf41b9120bffdc83723afc9d8473a7794407`，仓库 [volcengine/OpenViking](https://github.com/volcengine/OpenViking/tree/2425cf41b9120bffdc83723afc9d8473a7794407)。Apache 2.0 许可原文保存在 `vendor/LICENSE`。
+初始试点参考 OpenViking 固定提交 `2425cf41b9120bffdc83723afc9d8473a7794407`，仓库 [volcengine/OpenViking](https://github.com/volcengine/OpenViking/tree/2425cf41b9120bffdc83723afc9d8473a7794407)。Apache 2.0 许可原文保存在 `vendor/LICENSE`。
 
-| 本包文件                          | 上游路径                                                                                          | 改动                                                                                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendor/capture.mjs`              | `examples/dsh-memory-plugin/capture.mjs`                                                          | 原文；仅调用 `promptText` 和 `pluginMessage`                                                                                                 |
-| `vendor/shared/capture-utils.mjs` | `examples/memory-plugin-shared/lib/capture-utils.mjs`                                             | 原文，满足 capture 的静态导入                                                                                                                |
-| `vendor/shared/input-filters.mjs` | `examples/memory-plugin-shared/lib/input-filters.mjs`                                             | 原文，满足 capture-utils 的静态导入                                                                                                          |
-| `vendor/recall-context.mjs`       | `examples/memory-plugin-shared/lib/recall-core.mjs` 的 `RECALL_CONTEXT_TEMPLATE` 与 `wrapContext` | 仅摘取纯文本包装；导出包装函数，介绍文本限定为偏好背景、明确不是指令，并删除不存在的 MCP 工具提示。保留原有嵌套 delimiter 替换与美元字符处理 |
+`vendor/capture.mjs` 最初来自 `examples/dsh-memory-plugin/capture.mjs`，现已改为严格原始用户输入筛选和 Core 消息构造，不保留工具、助手或旧来源捕获。未再使用的上游 capture-utils 和 input-filters 已从运行包移除，历史提交保留原文。
 
-`index.mjs` 沿用 `examples/dsh-memory-plugin/index.mjs` 的 `agent/pre-step` waterfall 接入方式，先等待 `next()`，再保留其决定并追加消息。公司运行接线只调用 GEA 的只读能力。没有导入上游 runtime、client、profile、capture 运行接线、commit、pending 队列或 MCP 挂载入口。
+`vendor/recall-context.mjs` 最初摘自 `examples/memory-plugin-shared/lib/recall-core.mjs`。现使用本插件自己的记忆标记，保留背景与指令边界、嵌套标记净化和美元字符原样输出。
+
+`index.mjs` 沿用 `agent/pre-step` waterfall 的接入方式，等待下游决定后追加记忆背景。当前生成、版本和隔离合同属于 GEA 公司网关，不调用上游 OV runtime、client、profile、commit 或 MCP。
