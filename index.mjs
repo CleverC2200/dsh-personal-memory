@@ -98,7 +98,7 @@ export function apply(ctx) {
             ...decision.messages,
             pluginMessage(
               wrapContext(
-                `Personal memory recall status: matched.${failed ? " One lookup was unavailable; these are the successful results." : ""}\nWhen asked about the source, identify these as saved personal memories.\n\n${body}`,
+                `Personal memory recall status: matched.${failed ? " One lookup was unavailable; these are the successful results." : ""}\nWhen asked about the source, describe the saved personal memory and its date in plain language. Avoid internal IDs unless specifically requested.\n\n${body}`,
               ),
               { scope: state.scope },
             ),
@@ -174,22 +174,23 @@ export function apply(ctx) {
 }
 
 function recallQueries(query) {
+  const intent = query.replace(/“[^”]*”|「[^」]*」|『[^』]*』|《[^》]*》|"[^"]*"/gu, " ");
   const topics = [];
   if (
     /(?:我是谁|我叫(?:什么|啥)|我的(?:姓名|名字|身份|职责|工作背景)|你(?:还)?记得我|who am i\b|what(?:'s| is) my (?:name|identity|role)\b)/iu.test(
-      query,
+      intent,
     )
   )
     topics.push("姓名、身份和个人背景");
   if (
     /(?:我的(?:表达|回答|回复|沟通|语言|格式)?偏好|我(?:喜欢|偏好)(?:什么|怎样|哪种)|my (?:communication |response )?preferences\b|how do i (?:like|prefer)\b)/iu.test(
-      query,
+      intent,
     )
   )
     topics.push("表达偏好、回复语言和格式");
   if (
     /(?:我的(?:工作)?习惯|我(?:平时|通常|一般)(?:怎么|如何|怎样)|my (?:work )?habits\b|how do i (?:usually|normally)\b)/iu.test(
-      query,
+      intent,
     )
   )
     topics.push("工作习惯和日常协作方式");
@@ -207,12 +208,10 @@ function mergeRecall(lists) {
       const memory = list[index];
       if (!memory || seen.has(memory.id)) continue;
       seen.add(memory.id);
-      const source = memory.source;
       const entry = [
         `[${memory.id}] ${memory.title}`,
         memory.content,
         `来源：${memory.manuallyEdited ? "人工维护的个人记忆" : "对话中保存的个人记忆"}${memory.updatedAt ? `；更新时间：${memory.updatedAt}` : ""}`,
-        ...(source ? [`来源会话：${source.sessionId}；来源消息：${source.messageId}`] : []),
       ].join("\n");
       const length = [...entry].length + (entries.length ? 2 : 0);
       if (size + length > 6000) continue;

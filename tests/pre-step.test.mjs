@@ -321,12 +321,50 @@ test("supplemental recall preserves original matches, deduplicates IDs and share
   assert.match(body, /\[other\]/);
 });
 
+test("recalled context describes provenance without exposing internal session or message IDs", async () => {
+  const f = fixture({
+    recall: async () => ({
+      scope,
+      memories: [
+        {
+          ...saved,
+          source: {
+            ...saved.source,
+            sessionId: "internal-source-session",
+            messageId: "internal-source-message",
+          },
+        },
+      ],
+    }),
+  });
+  const result = await f.run();
+  const body = result.messages.at(-1).content[0].text;
+  assert.match(body, /对话中保存的个人记忆/);
+  assert.match(body, /2026-10-29/);
+  assert.doesNotMatch(body, /internal-source-session|internal-source-message/);
+});
+
 test("ordinary first-person business requests do not add a profile lookup", async () => {
   const f = fixture();
   f.payload.messages = [input("我需要分析基地库存")];
   f.decision.messages = f.payload.messages;
   await f.run();
   assert.deepEqual(f.queries, ["我需要分析基地库存"]);
+});
+
+test("quoted identity questions in translation, film and philosophy requests do not add a profile lookup", async () => {
+  for (const query of [
+    "请把“我是谁”翻译成英语",
+    "请解释“我是谁”这个哲学问题",
+    "介绍电影《我是谁》的剧情",
+    'Translate "Who am I" into Chinese',
+  ]) {
+    const f = fixture();
+    f.payload.messages = [input(query)];
+    f.decision.messages = f.payload.messages;
+    await f.run();
+    assert.deepEqual(f.queries, [query]);
+  }
 });
 
 test("empty, unavailable and skipped recall have distinct neutral status messages", async () => {
