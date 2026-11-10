@@ -28,7 +28,12 @@ function fixture(overrides = {}, config = { enabled: true }) {
     watch: () => () => {},
     bindSession: async () => {},
     assertSession: async () => {},
-    state: async () => ({ scope, generationEnabled: true, revision: 1, bankGeneration: 0 }),
+    state: async () => ({
+      scope,
+      generationEnabled: true,
+      revision: 1,
+      bankGeneration: 0,
+    }),
     recall: async (query) => {
       queries.push(query);
       return { scope, memories: [saved] };
@@ -51,7 +56,13 @@ function fixture(overrides = {}, config = { enabled: true }) {
   const messages = [input("我喜欢简短中文回复")];
   const decision = { kind: "enter", messages, startsRequestSeries: true };
   const controller = new AbortController();
-  const payload = { agent: { session }, messages, turn: 1, step: 1, signal: controller.signal };
+  const payload = {
+    agent: { session },
+    messages,
+    turn: 1,
+    step: 1,
+    signal: controller.signal,
+  };
   return {
     service,
     identity,
@@ -162,7 +173,9 @@ test("background extraction does not block turn end or following conversation an
 
 test("rejection, subagent, untrusted source and attachment content never enter capture", async () => {
   const rejected = fixture();
-  assert.deepEqual(await rejected.run(async () => ({ kind: "reject" })), { kind: "reject" });
+  assert.deepEqual(await rejected.run(async () => ({ kind: "reject" })), {
+    kind: "reject",
+  });
   rejected.end();
   await rejected.flush();
   assert.deepEqual(rejected.captures, []);
@@ -175,7 +188,14 @@ test("rejection, subagent, untrusted source and attachment content never enter c
   for (const messages of [
     [],
     [input("a", "plugin:gea-personal-memory")],
-    [{ id: "legacy", role: "user", source: {}, content: [{ type: "text", text: "旧未标来源" }] }],
+    [
+      {
+        id: "legacy",
+        role: "user",
+        source: {},
+        content: [{ type: "text", text: "旧未标来源" }],
+      },
+    ],
     [
       {
         id: "file",
@@ -245,4 +265,193 @@ test("empty recall with generation OFF does not bind an unused session", async (
   });
   await f.run();
   assert.equal(bindings, 0);
+});
+
+test("a new conversation recalls identity with the original question and a subject query", async () => {
+  const name = {
+    ...saved,
+    category: "background",
+    title: "姓名",
+    content: "用户姓名是陈勇浩",
+  };
+  const queries = [];
+  const f = fixture({
+    recall: async (query) => {
+      queries.push(query);
+      return { scope, memories: query === "我是谁" ? [] : [name] };
+    },
+  });
+  f.payload.messages = [input("我是谁")];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  assert.equal(queries.length, 2);
+  assert.equal(queries[0], "我是谁");
+  assert.match(queries[1], /当前用户的姓名、身份和个人背景/);
+  assert.equal(result.messages.at(-1).source.kind, "plugin:gea-personal-memory");
+  assert.match(result.messages.at(-1).content[0].text, /用户姓名是陈勇浩/);
+  assert.match(result.messages.at(-1).content[0].text, /matched/);
+  assert.match(result.messages.at(-1).content[0].text, /2026-10-29/);
+  f.end();
+  await f.flush();
+  assert.equal(f.captures.length, 1);
+  assert.equal(f.captures[0].text, "我是谁");
+});
+
+test("supplemental recall preserves original matches, deduplicates IDs and shares a deadline", async () => {
+  const signals = [];
+  const other = {
+    ...saved,
+    id: "other",
+    title: "姓名",
+    content: "用户姓名是陈勇浩",
+  };
+  const f = fixture({
+    recall: async (query, signal) => {
+      signals.push(signal);
+      return { scope, memories: query === "我是谁" ? [saved] : [saved, other] };
+    },
+  });
+  f.payload.messages = [input("我是谁")];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  const body = result.messages.at(-1).content[0].text;
+  assert.equal(signals.length, 2);
+  assert.equal(signals[0], signals[1]);
+  assert.equal(body.split("[memory-1]").length - 1, 1);
+  assert.match(body, /\[other\]/);
+});
+
+test("ordinary first-person business requests do not add a profile lookup", async () => {
+  const f = fixture();
+  f.payload.messages = [input("我需要分析基地库存")];
+  f.decision.messages = f.payload.messages;
+  await f.run();
+  assert.deepEqual(f.queries, ["我需要分析基地库存"]);
+});
+
+test("empty, unavailable and skipped recall have distinct neutral status messages", async () => {
+  for (const [status, text, recall] of [
+    ["empty", "普通问题", async () => ({ scope, memories: [] })],
+    [
+      "unavailable",
+      "普通问题",
+      async () => {
+        throw Error("MEMORY_TIMEOUT");
+      },
+    ],
+    [
+      "skipped",
+      "长".repeat(2001),
+      async () => {
+        assert.fail("long query must not be sent");
+      },
+    ],
+  ]) {
+    let bindings = 0;
+    const f = fixture({
+      state: async () => ({
+        scope,
+        generationEnabled: false,
+        revision: 1,
+        bankGeneration: 0,
+      }),
+      bindSession: async () => {
+        bindings++;
+      },
+      recall,
+    });
+    f.payload.messages = [input(text)];
+    f.decision.messages = f.payload.messages;
+    const result = await f.run();
+    assert.equal(result.messages.at(-1).source.kind, "plugin:gea-personal-memory-status");
+    assert.match(result.messages.at(-1).content[0].text, new RegExp(`status: ${status}`));
+    assert.equal(result.messages.at(-1).source.scope, undefined);
+    assert.equal(bindings, 0);
+  }
+});
+
+test("one failed lookup keeps the other match and reports incomplete empty searches", async () => {
+  for (const memories of [[saved], []]) {
+    const f = fixture({
+      recall: async (query) => {
+        if (query !== "我是谁") throw Error("MEMORY_GATEWAY_UNAVAILABLE");
+        return { scope, memories };
+      },
+    });
+    f.payload.messages = [input("我是谁")];
+    f.decision.messages = f.payload.messages;
+    const result = await f.run();
+    const body = result.messages.at(-1).content[0].text;
+    assert.match(body, memories.length ? /status: matched/ : /status: unavailable/);
+    if (memories.length) assert.match(body, /用户偏好简短中文回复/);
+  }
+});
+
+test(
+  "a supplemental deadline does not discard an already successful original lookup",
+  { timeout: 1000 },
+  async (t) => {
+    const deadline = new AbortController();
+    t.mock.method(AbortSignal, "timeout", () => deadline.signal);
+    let started;
+    const ready = new Promise((resolve) => {
+      started = resolve;
+    });
+    const f = fixture({
+      recall: async (query) => {
+        if (query === "我是谁") return { scope, memories: [saved] };
+        started();
+        return new Promise(() => {});
+      },
+    });
+    f.payload.messages = [input("我是谁")];
+    f.decision.messages = f.payload.messages;
+    const pending = f.run();
+    await ready;
+    await new Promise(setImmediate);
+    deadline.abort(Error("lookup deadline"));
+    const result = await pending;
+    assert.match(result.messages.at(-1).content[0].text, /status: matched/);
+    assert.match(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  },
+);
+
+test("authorization failures and changes to the memory revision cannot inject recalled facts", async () => {
+  const denied = fixture({
+    recall: async () => {
+      throw Error("MEMORY_FORBIDDEN");
+    },
+  });
+  await assert.rejects(denied.run(), /MEMORY_FORBIDDEN/);
+  let reads = 0;
+  const changed = fixture({
+    state: async () => ({
+      scope,
+      generationEnabled: true,
+      revision: ++reads,
+      bankGeneration: 0,
+    }),
+  });
+  const result = await changed.run();
+  assert.doesNotMatch(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  assert.match(result.messages.at(-1).content[0].text, /status: unavailable/);
+});
+
+test("merged recall keeps one five-entry content budget across both lookups", async () => {
+  const f = fixture({
+    recall: async (query) => ({
+      scope,
+      memories: Array.from({ length: 5 }, (_, i) => ({
+        ...saved,
+        id: `${query === "我是谁" ? "original" : "supplement"}-${i}`,
+        content: "字".repeat(1000),
+      })),
+    }),
+  });
+  f.payload.messages = [input("我是谁")];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  const body = result.messages.at(-1).content[0].text;
+  assert.equal((body.match(/\[(?:original|supplement)-\d\]/g) ?? []).length, 5);
+  assert.ok([...body].length < 6500);
 });
