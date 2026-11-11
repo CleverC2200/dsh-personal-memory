@@ -1,5 +1,7 @@
 import { build } from "esbuild";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+const manifest = JSON.parse(await readFile("package.json", "utf8"));
+await writeFile("package-version.mjs", `export const pluginPackageVersion = Object.freeze(${JSON.stringify({ name: manifest.name, version: manifest.version })});\n`);
 const result = await build({
   entryPoints: ["client.jsx"],
   bundle: true,

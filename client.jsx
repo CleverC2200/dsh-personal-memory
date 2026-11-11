@@ -7,6 +7,7 @@ import {
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import { createMemorySettings } from "./settings.mjs";
 import styles from "./memory.css";
+export { pluginPackageVersion } from "./package-version.mjs";
 
 export const inject = ["slots", "geaIdentity", "uiWorkspace"];
 export const sectionId = "gea-personal-memory";

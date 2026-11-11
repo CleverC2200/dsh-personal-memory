@@ -2,6 +2,7 @@ import z from "@deepseek-ai/schemastery";
 import { createHash } from "node:crypto";
 import { pluginMessage, promptText, originalInputs } from "./vendor/capture.mjs";
 import { wrapContext } from "./vendor/recall-context.mjs";
+export { pluginPackageVersion } from "./package-version.mjs";
 
 export const name = "gea-personal-memory";
 export const inject = ["geaMemory"];

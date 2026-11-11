@@ -14,6 +14,7 @@ test("package check rejects an absent client export and accepts its packaged bui
     "scripts",
     "index.mjs",
     "index.d.mts",
+    "package-version.mjs",
     "cordis.patch.yml",
     "vendor",
     "settings.mjs",
@@ -28,4 +29,14 @@ test("package check rejects an absent client export and accepts its packaged bui
   writeFileSync(join(root, "lib/client.js"), "window.__ModuleLoader__.load({});\n");
   const built = check();
   assert.equal(built.status, 0, built.stdout + built.stderr);
+  const production = join(root, "production");
+  const packed = spawnSync(process.execPath, ["scripts/pack.mjs", "--destination", production], { cwd: root, encoding: "utf8" });
+  assert.equal(packed.status, 0, packed.stdout + packed.stderr);
+  const file = JSON.parse(packed.stdout)[0].filename;
+  const inspected = spawnSync("tar", ["-xOf", join(production, file), "package/package.json"], { encoding: "utf8" });
+  assert.equal(inspected.status, 0);
+  const runtime = JSON.parse(inspected.stdout);
+  assert.equal(runtime.devDependencies, undefined);
+  assert.equal(runtime.scripts, undefined);
+  assert.deepEqual(runtime.peerDependencies, manifest.peerDependencies);
 });
