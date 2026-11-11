@@ -4,7 +4,7 @@
 
 pre-step 仅接纳本次新领取且 source.kind=user 的文字，不回扫 history、replay 或 seed。按已验证开关与版本准入后，在对应 turn/end 后串行后台提取稳定工作背景、表达偏好与工作习惯，不等待提取完成即可继续聊天。助手、工具、插件注入、附件内容、引用、假设、凭据和临时任务不进入保存。没有候选不产生条目。来源 ID 和时间取自已提交的新消息事件。
 
-召回通过 Host 当前身份请求，只向模型追加一条带 plugin:gea-personal-memory 与 scope 的背景消息。取消或身份切换后旧结果不追加；失败继续聊天。新生成、手工维护与删除屏障的协议单一来源是同组 GEA 的 docs/memory/protocol.md 和 src/shared/memory-contract.ts。正文只存 Hindsight；本插件不保存输入副本。
+召回通过 Host 当前身份请求。明确询问个人身份、表达偏好或工作习惯时，保留原话查询并补充一次主题查询，结果去重后共用原有正文预算。命中时向模型追加一条带 plugin:gea-personal-memory 与 scope 的背景消息，包含来源和更新时间。未命中、服务暂不可用和未执行使用独立的本轮状态消息，不代表账号没有记忆，也不把未读取个人内容的会话绑定为已使用记忆。取消、身份切换或召回期间记忆版本变化后旧内容不追加；权限拒绝保持失败。新生成、手工维护与删除屏障的协议单一来源是同组 GEA 的 docs/memory/protocol.md 和 src/shared/memory-contract.ts。正文只存 Hindsight；本插件不保存输入副本。
 
 源码测试使用固定 Core 的真实消息构造器，tests/agent-http.integration.mjs 还装载真实 AgentLoop、Session、插件事件、Host传输和本地公司网关，外部GEA、模型及Hindsight为HTTP合成替身。测试使用同组 ../dsh-gea-plugin 和 ../../official-latest-standard，可通过 DSH_CORE_PATH 指定本票固定Core。npm run test:integration 运行该组合验收，npm test 运行独立插件测试。该组合实际使用 Host 的持久会话账本，但不证明真实账号、服务器部署、Native 或正式发行。
 
