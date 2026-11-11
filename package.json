@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/dsh-personal-memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "通过 GEA Host 管理和召回当前账号个人记忆的独立 DSH 插件。",
