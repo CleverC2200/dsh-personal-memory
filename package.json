@@ -1,6 +1,6 @@
 {
   "name": "@cleverc2200/dsh-personal-memory",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "通过 GEA Host 管理和召回当前账号个人记忆的独立 DSH 插件。",
@@ -23,13 +23,15 @@
     "README.md",
     "NOTICE.md",
     "lib/client.js",
-    "settings.mjs"
+    "settings.mjs",
+    "package-version.mjs"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "check:package": "node scripts/check-package.mjs",
     "build:client": "node scripts/build.mjs",
-    "test:integration": "node --test tests/*.integration.mjs"
+    "test:integration": "node --test tests/*.integration.mjs",
+    "package:plugin": "npm run build:client && node scripts/pack.mjs"
   },
   "peerDependencies": {
     "@cleverc2200/gea-dsh-prototype": ">=0.0.203 <0.1.0",
