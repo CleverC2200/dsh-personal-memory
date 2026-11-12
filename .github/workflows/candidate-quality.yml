@@ -13,15 +13,32 @@ jobs:
   candidate-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: plugin
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          path: plugin
+      - uses: actions/checkout@v7
+        with:
+          repository: CleverC2200/dsh-agent-workbench
+          ref: f02c89f591b95af135fc8c0b617aa33cd67fae04
+          path: dsh-agent-workbench
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/check-source-comments.mjs
+            scripts/source-comments.mjs
+            scripts/format-comments.mjs
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: plugin/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node --run check:comments
       - run: npm test
       - run: npm run build:client
       - run: npm run check:package
