@@ -178,7 +178,7 @@ function recallQueries(query) {
   const intent = query.replace(/“[^”]*”|「[^」]*」|『[^』]*』|《[^》]*》|"[^"]*"/gu, " ");
   const topics = [];
   if (
-    /(?:我是谁|我叫(?:什么|啥)|我的(?:姓名|名字|身份|职责|工作背景)|你(?:还)?记得我|who am i\b|what(?:'s| is) my (?:name|identity|role)\b)/iu.test(
+    /(?:我是谁|我叫(?:什么|啥)|我的(?:姓名|名字|身份|职责|工作背景)|你(?:还)?记得我(?:吗|么|嘛)?(?=[？?！!。，,；;]|\s*$)|who am i\b|what(?:'s| is) my (?:name|identity|role)\b)/iu.test(
       intent,
     )
   )
@@ -214,7 +214,7 @@ function mergeRecall(lists) {
         memory.content,
         `来源：${memory.manuallyEdited ? "人工维护的个人记忆" : "对话中保存的个人记忆"}${memory.updatedAt ? `；更新时间：${memory.updatedAt}` : ""}`,
       ].join("\n");
-      const length = [...entry].length + (entries.length ? 2 : 0);
+      const length = [...memory.content].length;
       if (size + length > 6000) continue;
       entries.push(entry);
       size += length;

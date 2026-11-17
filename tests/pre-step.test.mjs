@@ -146,6 +146,38 @@ test("only newly claimed original user text is captured, regardless of downstrea
   assert.equal(f.queries[0], "我负责库存计划");
 });
 
+test("explicit user text with an attachment participates in recall while only original plain text is generated", async () => {
+  const f = fixture();
+  const plain = input("我负责华东库存计划");
+  f.payload.agent.session.history = [input("历史库存内容不进入查询")];
+  f.payload.messages = [
+    createUserMessage({
+      source: { kind: "user" },
+      content: [
+        { type: "text", text: "截图对应的库存规则是什么？" },
+        { type: "image_url", image_url: "附件中的库存数字不进入查询" },
+        { type: "text", text: "请结合之前要求回答" },
+      ],
+    }),
+    plain,
+    input("工具提取的附件内容", "tool"),
+    input("插件补充的附件内容", "plugin:other"),
+    { role: "assistant", content: [{ type: "text", text: "助手描述的附件内容" }] },
+  ];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  assert.deepEqual(f.queries, [
+    "截图对应的库存规则是什么？\n请结合之前要求回答\n\n我负责华东库存计划",
+  ]);
+  assert.equal(result.messages.at(-1).source.kind, "plugin:gea-personal-memory");
+  assert.match(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  f.end();
+  await f.flush();
+  assert.equal(f.captures.length, 1);
+  assert.equal(f.captures[0].text, "我负责华东库存计划");
+  assert.equal(f.captures[0].source.messageId, plain.id);
+});
+
 test("background extraction does not block turn end or following conversation and failure remains contained", async () => {
   let release;
   let started;
@@ -352,6 +384,37 @@ test("ordinary first-person business requests do not add a profile lookup", asyn
   assert.deepEqual(f.queries, ["我需要分析基地库存"]);
 });
 
+test("remembering a past business topic keeps only the original recall query", async () => {
+  for (const query of [
+    "你记得我上次说过的库存要求吗",
+    "你还记得我之前提过的库存要求吗",
+    "你记得我的库存要求吗",
+  ]) {
+    const f = fixture();
+    f.payload.messages = [input(query)];
+    f.decision.messages = f.payload.messages;
+    const result = await f.run();
+    assert.deepEqual(f.queries, [query]);
+    assert.match(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  }
+});
+
+test("direct identity, preference and habit questions keep their subject lookup", async () => {
+  for (const [query, topic] of [
+    ["你还记得我吗", "姓名、身份和个人背景"],
+    ["你记得我？", "姓名、身份和个人背景"],
+    ["你还记得我", "姓名、身份和个人背景"],
+    ["我的回复偏好是什么", "表达偏好、回复语言和格式"],
+    ["我的工作习惯是什么", "工作习惯和日常协作方式"],
+  ]) {
+    const f = fixture();
+    f.payload.messages = [input(query)];
+    f.decision.messages = f.payload.messages;
+    await f.run();
+    assert.deepEqual(f.queries, [query, `当前用户的${topic}。用户原话：${query}`]);
+  }
+});
+
 test("quoted identity questions in translation, film and philosophy requests do not add a profile lookup", async () => {
   for (const query of [
     "请把“我是谁”翻译成英语",
@@ -475,6 +538,20 @@ test("authorization failures and changes to the memory revision cannot inject re
   assert.match(result.messages.at(-1).content[0].text, /status: unavailable/);
 });
 
+test("a 6000-character memory keeps its full Unicode content, title and provenance", async () => {
+  const content = "字😀".repeat(3000);
+  const f = fixture({
+    recall: async () => ({ scope, memories: [{ ...saved, content }] }),
+  });
+  const result = await f.run();
+  const message = result.messages.at(-1);
+  assert.equal(message.source.kind, "plugin:gea-personal-memory");
+  assert.match(message.content[0].text, /status: matched/);
+  assert.ok(message.content[0].text.includes(`\n${content}\n`));
+  assert.ok(message.content[0].text.includes(saved.title));
+  assert.match(message.content[0].text, /对话中保存的个人记忆；更新时间：2026-10-29/);
+});
+
 test("merged recall keeps one five-entry content budget across both lookups", async () => {
   const f = fixture({
     recall: async (query) => ({
@@ -492,4 +569,24 @@ test("merged recall keeps one five-entry content budget across both lookups", as
   const body = result.messages.at(-1).content[0].text;
   assert.equal((body.match(/\[(?:original|supplement)-\d\]/g) ?? []).length, 5);
   assert.ok([...body].length < 6500);
+});
+
+test("both lookups share the 6000-character content budget without duplicating or truncating facts", async () => {
+  const original = { ...saved, id: "original", content: "原😀".repeat(1500) };
+  const supplement = { ...saved, id: "supplement", content: "补😀".repeat(1500) };
+  const overflow = { ...saved, id: "overflow", content: "不得截断的事实" };
+  const f = fixture({
+    recall: async (query) => ({
+      scope,
+      memories: query === "我是谁" ? [original, overflow] : [supplement, original],
+    }),
+  });
+  f.payload.messages = [input("我是谁")];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  const body = result.messages.at(-1).content[0].text;
+  assert.ok(body.includes(`\n${original.content}\n`));
+  assert.ok(body.includes(`\n${supplement.content}\n`));
+  assert.equal(body.split("[original]").length - 1, 1);
+  assert.doesNotMatch(body, /\[overflow\]|不得截断的事实/);
 });
