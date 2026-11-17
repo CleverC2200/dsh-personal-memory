@@ -178,7 +178,7 @@ function recallQueries(query) {
   const intent = query.replace(/“[^”]*”|「[^」]*」|『[^』]*』|《[^》]*》|"[^"]*"/gu, " ");
   const topics = [];
   if (
-    /(?:我是谁|我叫(?:什么|啥)|我的(?:姓名|名字|身份|职责|工作背景)|你(?:还)?记得我|who am i\b|what(?:'s| is) my (?:name|identity|role)\b)/iu.test(
+    /(?:我是谁|我叫(?:什么|啥)|我的(?:姓名|名字|身份|职责|工作背景)|你(?:还)?记得我(?:吗|么|嘛)?(?=[？?！!。，,；;]|\s*$)|who am i\b|what(?:'s| is) my (?:name|identity|role)\b)/iu.test(
       intent,
     )
   )
