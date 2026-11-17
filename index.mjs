@@ -214,7 +214,7 @@ function mergeRecall(lists) {
         memory.content,
         `来源：${memory.manuallyEdited ? "人工维护的个人记忆" : "对话中保存的个人记忆"}${memory.updatedAt ? `；更新时间：${memory.updatedAt}` : ""}`,
       ].join("\n");
-      const length = [...entry].length + (entries.length ? 2 : 0);
+      const length = [...memory.content].length;
       if (size + length > 6000) continue;
       entries.push(entry);
       size += length;
