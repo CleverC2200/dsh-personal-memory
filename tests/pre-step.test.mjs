@@ -538,6 +538,20 @@ test("authorization failures and changes to the memory revision cannot inject re
   assert.match(result.messages.at(-1).content[0].text, /status: unavailable/);
 });
 
+test("a 6000-character memory keeps its full Unicode content, title and provenance", async () => {
+  const content = "字😀".repeat(3000);
+  const f = fixture({
+    recall: async () => ({ scope, memories: [{ ...saved, content }] }),
+  });
+  const result = await f.run();
+  const message = result.messages.at(-1);
+  assert.equal(message.source.kind, "plugin:gea-personal-memory");
+  assert.match(message.content[0].text, /status: matched/);
+  assert.ok(message.content[0].text.includes(`\n${content}\n`));
+  assert.ok(message.content[0].text.includes(saved.title));
+  assert.match(message.content[0].text, /对话中保存的个人记忆；更新时间：2026-10-29/);
+});
+
 test("merged recall keeps one five-entry content budget across both lookups", async () => {
   const f = fixture({
     recall: async (query) => ({
@@ -555,4 +569,24 @@ test("merged recall keeps one five-entry content budget across both lookups", as
   const body = result.messages.at(-1).content[0].text;
   assert.equal((body.match(/\[(?:original|supplement)-\d\]/g) ?? []).length, 5);
   assert.ok([...body].length < 6500);
+});
+
+test("both lookups share the 6000-character content budget without duplicating or truncating facts", async () => {
+  const original = { ...saved, id: "original", content: "原😀".repeat(1500) };
+  const supplement = { ...saved, id: "supplement", content: "补😀".repeat(1500) };
+  const overflow = { ...saved, id: "overflow", content: "不得截断的事实" };
+  const f = fixture({
+    recall: async (query) => ({
+      scope,
+      memories: query === "我是谁" ? [original, overflow] : [supplement, original],
+    }),
+  });
+  f.payload.messages = [input("我是谁")];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  const body = result.messages.at(-1).content[0].text;
+  assert.ok(body.includes(`\n${original.content}\n`));
+  assert.ok(body.includes(`\n${supplement.content}\n`));
+  assert.equal(body.split("[original]").length - 1, 1);
+  assert.doesNotMatch(body, /\[overflow\]|不得截断的事实/);
 });
