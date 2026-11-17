@@ -352,6 +352,37 @@ test("ordinary first-person business requests do not add a profile lookup", asyn
   assert.deepEqual(f.queries, ["我需要分析基地库存"]);
 });
 
+test("remembering a past business topic keeps only the original recall query", async () => {
+  for (const query of [
+    "你记得我上次说过的库存要求吗",
+    "你还记得我之前提过的库存要求吗",
+    "你记得我的库存要求吗",
+  ]) {
+    const f = fixture();
+    f.payload.messages = [input(query)];
+    f.decision.messages = f.payload.messages;
+    const result = await f.run();
+    assert.deepEqual(f.queries, [query]);
+    assert.match(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  }
+});
+
+test("direct identity, preference and habit questions keep their subject lookup", async () => {
+  for (const [query, topic] of [
+    ["你还记得我吗", "姓名、身份和个人背景"],
+    ["你记得我？", "姓名、身份和个人背景"],
+    ["你还记得我", "姓名、身份和个人背景"],
+    ["我的回复偏好是什么", "表达偏好、回复语言和格式"],
+    ["我的工作习惯是什么", "工作习惯和日常协作方式"],
+  ]) {
+    const f = fixture();
+    f.payload.messages = [input(query)];
+    f.decision.messages = f.payload.messages;
+    await f.run();
+    assert.deepEqual(f.queries, [query, `当前用户的${topic}。用户原话：${query}`]);
+  }
+});
+
 test("quoted identity questions in translation, film and philosophy requests do not add a profile lookup", async () => {
   for (const query of [
     "请把“我是谁”翻译成英语",
