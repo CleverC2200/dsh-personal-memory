@@ -146,6 +146,38 @@ test("only newly claimed original user text is captured, regardless of downstrea
   assert.equal(f.queries[0], "我负责库存计划");
 });
 
+test("explicit user text with an attachment participates in recall while only original plain text is generated", async () => {
+  const f = fixture();
+  const plain = input("我负责华东库存计划");
+  f.payload.agent.session.history = [input("历史库存内容不进入查询")];
+  f.payload.messages = [
+    createUserMessage({
+      source: { kind: "user" },
+      content: [
+        { type: "text", text: "截图对应的库存规则是什么？" },
+        { type: "image_url", image_url: "附件中的库存数字不进入查询" },
+        { type: "text", text: "请结合之前要求回答" },
+      ],
+    }),
+    plain,
+    input("工具提取的附件内容", "tool"),
+    input("插件补充的附件内容", "plugin:other"),
+    { role: "assistant", content: [{ type: "text", text: "助手描述的附件内容" }] },
+  ];
+  f.decision.messages = f.payload.messages;
+  const result = await f.run();
+  assert.deepEqual(f.queries, [
+    "截图对应的库存规则是什么？\n请结合之前要求回答\n\n我负责华东库存计划",
+  ]);
+  assert.equal(result.messages.at(-1).source.kind, "plugin:gea-personal-memory");
+  assert.match(result.messages.at(-1).content[0].text, /用户偏好简短中文回复/);
+  f.end();
+  await f.flush();
+  assert.equal(f.captures.length, 1);
+  assert.equal(f.captures[0].text, "我负责华东库存计划");
+  assert.equal(f.captures[0].source.messageId, plain.id);
+});
+
 test("background extraction does not block turn end or following conversation and failure remains contained", async () => {
   let release;
   let started;

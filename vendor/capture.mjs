@@ -8,6 +8,12 @@ export function pluginMessage(content, source) {
 }
 
 export function originalInputs(messages) {
+  return userTextInputs(messages).filter(({ message }) =>
+    message.content.every((part) => part.type === "text"),
+  );
+}
+
+function userTextInputs(messages) {
   return (messages ?? [])
     .filter(
       (message) =>
@@ -23,14 +29,11 @@ export function originalInputs(messages) {
         .join("\n")
         .trim(),
     }))
-    .filter(
-      ({ message, text }) =>
-        message.content.every((part) => part.type === "text") && text && [...text].length <= 8000,
-    );
+    .filter(({ text }) => text && [...text].length <= 8000);
 }
 
 export function promptText(messages) {
-  return originalInputs(messages)
+  return userTextInputs(messages)
     .map((input) => input.text)
     .join("\n\n");
 }
